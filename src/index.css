@@ -1,0 +1,199 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #4f46e5;
+  --color-primary-dark: #4338ca;
+  --color-primary-light: #eef2ff;
+  --color-sidebar: #1e1b4b;
+  --color-sidebar-hover: #312e81;
+  --color-success: #059669;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
+  --color-muted: #6b7280;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@keyframes cd-value-pulse {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.cd-amount-flash {
+  animation: cd-value-pulse 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes cd-panel-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(16 185 129 / 0);
+  }
+  45% {
+    box-shadow: 0 0 0 3px rgb(16 185 129 / 0.22), 0 0 20px rgb(79 70 229 / 0.08);
+  }
+}
+
+.cd-balance-widget-flash {
+  animation: cd-panel-glow 0.7s ease-out;
+}
+
+/* Claims KPI donut — ring grows from center on mount */
+@keyframes metric-donut-ring-enter {
+  0% {
+    transform: scale(0);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.metric-donut-ring-enter {
+  transform-origin: center;
+  animation: metric-donut-ring-enter 0.72s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .metric-donut-ring-enter {
+    animation: none;
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes quickadd-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  12% {
+    transform: translateX(-5px);
+  }
+  24% {
+    transform: translateX(5px);
+  }
+  36% {
+    transform: translateX(-4px);
+  }
+  48% {
+    transform: translateX(4px);
+  }
+  60% {
+    transform: translateX(-2px);
+  }
+  72% {
+    transform: translateX(2px);
+  }
+}
+
+.quickadd-section-shake {
+  animation: quickadd-shake 0.6s ease-in-out;
+  box-shadow: 0 0 0 2px rgb(248 113 113 / 0.45);
+}
+
+/* Error summary strip — same motion as sections; static ring when user prefers reduced motion */
+.quickadd-error-banner-emphasis {
+  animation: quickadd-shake 0.6s ease-in-out;
+  box-shadow: 0 0 0 2px rgb(217 119 6 / 0.45);
+  border-color: rgb(245 158 11 / 0.9);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quickadd-section-shake,
+  .quickadd-error-banner-emphasis {
+    animation: none;
+  }
+
+  .quickadd-error-banner-emphasis {
+    box-shadow: 0 0 0 2px rgb(217 119 6 / 0.55);
+    border-color: rgb(217 119 6);
+  }
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
+  border-color: #4f46e5;
+}
+
+select {
+  appearance: auto;
+}
+
+input[type="date"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  color-scheme: light;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236366f1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2' ry='2'%3E%3C/rect%3E%3Cline x1='16' y1='2' x2='16' y2='6'%3E%3C/line%3E%3Cline x1='8' y1='2' x2='8' y2='6'%3E%3C/line%3E%3Cline x1='3' y1='10' x2='21' y2='10'%3E%3C/line%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px;
+  padding-right: 32px !important;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+input[type="date"]::-webkit-datetime-edit {
+  padding: 0;
+}
+
+input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+  padding: 0;
+}
+
+input[type="date"]::-webkit-date-and-time-value {
+  text-align: left;
+}
+
+input[type="date"]:hover {
+  border-color: #a5b4fc;
+}
+
+input[type="date"]:not(:placeholder-shown),
+input[type="date"][value]:not([value=""]) {
+  color: #1e1b4b;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}

@@ -1,0 +1,32 @@
+---
+description: Employer portal MLP — read Research data before flows, UI, and copy
+alwaysApply: true
+---
+
+# Employer portal research (MLP)
+
+Before designing or implementing **employer portal** features, flows, empty states, copy, or prioritization in this repo:
+
+1. **Read** the markdown files in `Research data/` (especially `principles.md`, `mental-model.md`, `problems.md`, `features.md`, `flows-system-pattern.md`).
+2. **Align** work with that research **in addition to** existing code patterns and components.
+
+## Non-negotiable themes from research
+
+- **Clarity**: users know what they are doing, what is happening, and what happened; guided steps and post-action summaries.
+- **Transparency**: surface data, logic, and **financial impact** (e.g. CD balance, premium preview, before/after).
+- **Reliability**: accurate, consistent; avoid false success; prefer explicit outcomes and audit-friendly patterns where relevant.
+- **Efficiency**: optimize frequent actions; quick/bulk paths; **inline validation** before submission.
+
+## Mental model
+
+- Users think in **net impact** (premium + CD), not isolated actions.
+- **Validation before submit** and **preview of impact** are critical.
+- Financial visibility and **explanation** (not only raw fields) build trust.
+
+## Default interaction pattern
+
+When adding or changing mutating workflows, prefer the sequence in `Research data/flows-system-pattern.md`: input → validate → preview impact → confirm → submit → clear success/failure → post-action summary.
+
+## Scope
+
+This rule applies to the **MLP employer portal** work in this workspace. If a change is purely tooling or unrelated to portal UX/product, research alignment is still useful but need not block mechanical fixes.

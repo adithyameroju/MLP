@@ -1,0 +1,57 @@
+---
+description: Employer portal MLP — consistent page shell, breadcrumbs, colors, type, layout width, interactions
+alwaysApply: true
+---
+
+# Employer portal UI shell (MLP)
+
+When adding or changing **user-facing pages** under `src/pages/` (or new routes in `src/App.jsx`), follow this contract so layout, breadcrumbs, colors, typography, and interactions stay consistent. Do **not** invent a one-off page chrome unless the task explicitly documents an exception.
+
+## Canonical references (read before diverging)
+
+- Page chrome: [`src/components/PageHeader.jsx`](src/components/PageHeader.jsx)
+- Breadcrumb preset: [`src/lib/breadcrumbPresets.js`](src/lib/breadcrumbPresets.js) (`endorsementsModuleCrumb` for Endorsements subtree)
+- Full-page examples: [`src/pages/CdBalance.jsx`](src/pages/CdBalance.jsx), [`src/pages/PolicyCoverage.jsx`](src/pages/PolicyCoverage.jsx); **primary content width** (full width inside padding): [`src/pages/EndorsementsDashboard.jsx`](src/pages/EndorsementsDashboard.jsx)
+- App chrome / nav: [`src/components/Layout.jsx`](src/components/Layout.jsx), routes: [`src/App.jsx`](src/App.jsx)
+
+Also read [`AGENTS.md`](AGENTS.md) § UI shell for the checklist.
+
+## Page layout and width
+
+- **Scroll root** (outer wrapper of the page): use a **full-width** main column inside `Layout` — do not add `max-w-6xl mx-auto` on the page shell unless the product brief explicitly requires a narrow reading column.
+- **Primary content:** the main body below `PageHeader` should span **edge to edge within** `px-6 lg:px-8` (same pattern as `EndorsementsDashboard.jsx`: **`w-full`**, no **`mx-auto max-w-*`** wrapper around the whole page content). Exceptions need an explicit brief/PR note. Scoped limits (modal width, `truncate` / table cells, a single narrow input) are fine.
+- **Padding:** default horizontal + vertical padding for main content: **`px-6 py-6 lg:px-8`** (see `PolicyCoverage.jsx`). If a page omits `bg-gray-50` on the root, keep it only when the parent already provides it; otherwise prefer **`bg-gray-50`** on the scroll root for parity with other tools pages.
+- **Height / scroll:** prefer **`flex h-full min-h-0 flex-col overflow-y-auto`** (or `flex-col` + `min-h-0` as in existing flows) so content scrolls inside the main pane, not the whole app incorrectly.
+
+## Breadcrumbs and header
+
+- **Always** use **`PageHeader`** for the visible title + subtitle + optional breadcrumb row. Do **not** build a custom duplicate header (back button + title block) unless migrating an entire module off `PageHeader` in one change.
+- **Module landing pages** (first screen of a sidebar module, e.g. CD balance, policy coverage): pass **`breadcrumbs={[]}`** so the breadcrumb/back row is hidden per `PageHeader` rules.
+- **Inner pages** (drill-in under a module): pass a trail **`[ …parents with path or onClick, { label: 'Current page' } ]`** where the **last** item has **no** `path` / navigation — it is the current page. First segment for Endorsements flows: import **`endorsementsModuleCrumb`** from `breadcrumbPresets.js`.
+- **Back control:** icon-only in `PageHeader`; do not add visible “Back” text next to the arrow. Use `onBack` / `backPath` when the default parent navigation is wrong (e.g. preview steps).
+
+## Typography
+
+- **Page title and subtitle** must go through **`PageHeader`** so defaults stay aligned: primary title **`text-2xl font-bold`**, subtitle **`text-sm text-gray-500`** with `mt-1` (see `PageHeader` implementation — match Endorsements dashboard scale).
+- Avoid extra top-level **`h1`** on the same page outside `PageHeader`. Section headings inside the page may use **`h2` / `text-lg font-bold`** or smaller per existing modules; do not introduce arbitrary `text-3xl` page titles.
+
+## Color and surfaces
+
+- **Page background:** **`bg-gray-50`** on the main scroll container where other tools pages use it.
+- **Cards / panels:** **`bg-white`**, **`border border-gray-200`**, subtle **`shadow-sm`** where siblings already use it; avoid heavy colored gradients for standard CRUD/tools surfaces.
+- **Primary actions:** **`bg-indigo-600`**, **`hover:bg-indigo-700`**, focus ring **`focus:ring-2 focus:ring-indigo-500/20`** with **`focus:border-indigo-500`** on inputs where forms already follow that pattern.
+- **Links / interactive text:** **`text-indigo-600`**, **`hover:underline`** for in-content links; muted body **`text-gray-600`**, meta **`text-gray-500`**.
+
+## Interactions
+
+- **Buttons:** use existing patterns — `rounded-lg`, clear `cursor-pointer`, disabled states with `opacity-50` / `disabled:cursor-not-allowed` where applicable.
+- **Destructive actions:** keep existing red patterns from delete flows; do not recolor delete confirmations to indigo.
+- **Do not** reintroduce a separate global “Home / Endorsements” control beside `PageHeader` breadcrumbs; navigation consistency lives in `PageHeader` + sidebar.
+
+## Routing and sidebar
+
+- New **top-level modules**: register **`Route`** in [`src/App.jsx`](src/App.jsx) and add **`navItems`** (and active-state logic) in [`src/components/Layout.jsx`](src/components/Layout.jsx) in the same task unless explicitly split.
+
+## Exceptions
+
+If a design intentionally breaks any rule above (e.g. full-bleed marketing page), state it in the PR / task and add a short comment in code **why** this page is exempt.
