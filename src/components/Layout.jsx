@@ -9,6 +9,7 @@ import {
   BarChart3,
   MessageSquare,
   Headphones,
+  Sparkles,
   Bell,
   HelpCircle,
   Menu,
@@ -32,6 +33,9 @@ const navItems = [
   { icon: Headphones, label: 'Help center', path: '/support/help' },
 ]
 
+/** Highlighted sidebar section for release tutorials */
+const newReleasesNavItem = { icon: Sparkles, label: 'New releases', path: '/new-releases' }
+
 const endorsementPaths = ['/', '/add', '/update', '/delete', '/hrms-sync', '/endorsements/schedule']
 
 function isEndorsementRoute(pathname) {
@@ -47,6 +51,7 @@ function globalSearchPlaceholder(pathname) {
   if (pathname.startsWith('/cd-balance')) return 'Search transactions by description or reference'
   if (pathname.startsWith('/hrms-sync')) return 'Search by name, ID, or email'
   if (pathname.startsWith('/support/help')) return 'Search guides and videos…'
+  if (pathname.startsWith('/new-releases')) return 'Search release tutorials…'
   return 'Search portal…'
 }
 
@@ -134,6 +139,7 @@ export default function Layout({ children }) {
   const { query, setQuery } = useGlobalSearch()
   const { entityId, setEntityId, entityOptions } = useEntity()
   const searchPlaceholder = useMemo(() => globalSearchPlaceholder(location.pathname), [location.pathname])
+  const NewReleasesIcon = newReleasesNavItem.icon
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
@@ -154,33 +160,60 @@ export default function Layout({ children }) {
           )}
         </div>
 
-        <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
-          {navItems.map((item) => {
-            const Icon = item.icon
-            const isActive =
-              item.path === '/'
-                ? isEndorsementRoute(location.pathname)
-                : item.path === '/policy-management/coverage'
-                  ? location.pathname.startsWith('/policy-management')
-                  : item.path.startsWith('/support/')
-                    ? location.pathname === item.path || location.pathname.startsWith(`${item.path}/`)
-                    : location.pathname.startsWith(item.path)
-            return (
-              <button
-                key={item.path}
-                onClick={() => navigate(item.path)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors cursor-pointer
+        <nav className="flex-1 py-4 px-3 overflow-y-auto">
+          <div className="space-y-1">
+            {navItems.map((item) => {
+              const Icon = item.icon
+              const isActive =
+                item.path === '/'
+                  ? isEndorsementRoute(location.pathname)
+                  : item.path === '/policy-management/coverage'
+                    ? location.pathname.startsWith('/policy-management')
+                    : item.path.startsWith('/support/')
+                      ? location.pathname === item.path || location.pathname.startsWith(`${item.path}/`)
+                      : location.pathname.startsWith(item.path)
+              return (
+                <button
+                  key={item.path}
+                  onClick={() => navigate(item.path)}
+                  title={collapsed ? item.label : undefined}
+                  type="button"
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors cursor-pointer
                   ${isActive
                     ? 'bg-indigo-600 text-white font-medium'
                     : 'text-indigo-200 hover:bg-sidebar-hover hover:text-white'
                   }
                   ${collapsed ? 'justify-center' : ''}`}
-              >
-                <Icon size={20} className="flex-shrink-0" />
-                {!collapsed && <span>{item.label}</span>}
-              </button>
-            )
-          })}
+                >
+                  <Icon size={20} className="flex-shrink-0" />
+                  {!collapsed && <span>{item.label}</span>}
+                </button>
+              )
+            })}
+          </div>
+
+          <div className={`mt-4 pt-4 border-t border-white/15 ${collapsed ? 'space-y-1' : 'space-y-2'}`}>
+            {!collapsed && (
+              <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-indigo-300/90">
+                New releases & tutorials
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => navigate(newReleasesNavItem.path)}
+              title={collapsed ? newReleasesNavItem.label : undefined}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors cursor-pointer ring-1 ring-white/15 bg-white/5
+                ${
+                  location.pathname.startsWith(newReleasesNavItem.path)
+                    ? 'bg-indigo-500 text-white font-medium ring-transparent'
+                    : 'text-white/95 hover:bg-white/10 hover:ring-white/25'
+                }
+                ${collapsed ? 'justify-center' : ''}`}
+            >
+              <NewReleasesIcon size={20} className="flex-shrink-0" />
+              {!collapsed && <span>{newReleasesNavItem.label}</span>}
+            </button>
+          </div>
         </nav>
 
         <div className={`p-3 border-t border-white/10 ${collapsed ? 'flex justify-center' : ''}`}>

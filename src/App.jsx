@@ -26,6 +26,8 @@ import Claims from './pages/Claims'
 import ClaimsDetail from './pages/ClaimsDetail'
 import SupportFeedback from './pages/SupportFeedback'
 import SupportHelpCenter from './pages/SupportHelpCenter'
+import SupportHelpArticleDetail from './pages/SupportHelpArticleDetail'
+import NewReleases from './pages/NewReleases'
 
 function MainLayout() {
   return (
@@ -100,7 +102,10 @@ export default function App() {
           <Route path="/delete/bulk" element={<BulkDelete />} />
           <Route path="/hrms-sync" element={<HRMSSync />} />
           <Route path="/support/feedback" element={<SupportFeedback />} />
+          <Route path="/support/help/articles/:articleId" element={<SupportHelpArticleDetail />} />
           <Route path="/support/help" element={<SupportHelpCenter />} />
+          <Route path="/new-releases" element={<NewReleases />} />
+          <Route path="/whats-new" element={<Navigate to="/new-releases" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
