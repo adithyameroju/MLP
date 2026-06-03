@@ -28,7 +28,7 @@ export default function EndorsementSortTh({
   return (
     <th
       scope={scope}
-      className={`min-w-0 px-4 py-2.5 ${alignClass} text-[10px] font-semibold uppercase tracking-wider text-[#495057] ${className}`}
+      className={`min-w-0 px-3 py-2 ${alignClass} text-xs font-semibold normal-case tracking-normal text-[#495057] ${className}`}
       aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
     >
       <button type="button" className={`${BTN_BASE} w-full ${justifyClass}`} onClick={() => onSort(columnKey)}>

@@ -19,9 +19,17 @@ import {
   Clock,
   AlertCircle,
   Pencil,
+  Loader2,
+  Eye,
 } from 'lucide-react'
 import { useGlobalSearch } from '../context/GlobalSearchContext'
 import { CD_BALANCE_AS_OF_ISO, CD_MONTHLY_BURN_RUPEES, CD_PREMIUM_SPLIT, CD_THRESHOLDS } from '../data/cdWalletMock'
+import { CD_PROFORMA_EMPLOYER } from '../data/cdProformaMock'
+import {
+  downloadProformaPdfBytes,
+  generateCdProformaPdf,
+  proformaDownloadFilename,
+} from '../lib/generateCdProformaPdf'
 
 // —— Types ——————————————————————————————————————————————————————————
 
@@ -49,7 +57,27 @@ type DisputeRecord = {
 
 type MainTab = 'history' | 'disputes' | 'alerts'
 
+type HistorySubTab = 'transactions' | 'proforma'
+
 type DisputeScope = 'transaction' | 'period' | 'general'
+
+type ProformaStatus = 'requested' | 'issued' | 'paid'
+
+type ProformaInvoice = {
+  id: string
+  ref: string
+  requestedAt: string
+  amount: number
+  status: ProformaStatus
+  employerName: string
+}
+
+type RechargePhase = 'form' | 'generating' | 'ready'
+
+const PROFORMA_PDF_STEPS = 22
+const PROFORMA_PDF_STEP_MS = 85
+
+type TxStatusFilter = 'all' | 'settled' | 'pending_recon'
 
 // —— Utils ——————————————————————————————————————————————————————————
 
@@ -222,6 +250,37 @@ const INITIAL_MOCK_DISPUTES: DisputeRecord[] = [
   { id: 'DSP-884', linkedRef: 'BU-4410', createdAt: '2026-03-11', status: 'Awaiting documents' },
 ]
 
+const INITIAL_PROFORMA_INVOICES: ProformaInvoice[] = [
+  {
+    id: 'pi-1',
+    ref: 'PI-2026-0142',
+    requestedAt: '2026-03-18T10:00:00.000Z',
+    amount: 5_00_000,
+    status: 'issued',
+    employerName: CD_PROFORMA_EMPLOYER.legalName,
+  },
+  {
+    id: 'pi-2',
+    ref: 'PI-2026-0098',
+    requestedAt: '2026-02-05T14:30:00.000Z',
+    amount: 12_00_000,
+    status: 'paid',
+    employerName: CD_PROFORMA_EMPLOYER.legalName,
+  },
+]
+
+function proformaStatusLabel(status: ProformaStatus) {
+  if (status === 'requested') return 'Requested'
+  if (status === 'issued') return 'Issued'
+  return 'Paid'
+}
+
+function proformaStatusClass(status: ProformaStatus) {
+  if (status === 'requested') return 'bg-amber-50 text-amber-800'
+  if (status === 'issued') return 'bg-indigo-50 text-indigo-800'
+  return 'bg-emerald-50 text-emerald-800'
+}
+
 // —— Badges ——————————————————————————————————————————————————————————
 
 /** Same visual language as `HistoryStatusMetadata` in EndorsementHistory (rounded-full, text-xs, tinted fill). */
@@ -303,19 +362,18 @@ function CdBurnRunwayCard({
   balance: number
   runwayLabel: string
 }) {
-  const burnShareOfBalance = balance > 0 ? (monthlyBurn / balance) * 100 : 0
   const monthsMatch = runwayLabel.match(/(\d+(?:\.\d+)?)/)
   const runwayMonths = monthsMatch ? Math.min(12, Math.max(0, parseFloat(monthsMatch[1]))) : 4
   const runwayBarPct = Math.min(100, (runwayMonths / 12) * 100)
 
   return (
     <section
-      aria-label="Burn rate"
+      aria-label="Average consumption"
       className="flex h-full min-h-[15rem] flex-col rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm sm:p-5"
     >
-      <p className={W_LABEL}>Est. monthly burn</p>
+      <p className={W_LABEL}>Average consumption</p>
       <p className={`mt-1 ${W_VALUE}`}>{formatInr(monthlyBurn, false)}</p>
-      <p className={`${W_SUB} mt-1`}>~{burnShareOfBalance.toFixed(0)}% of current balance per month (demo)</p>
+      <p className={`${W_SUB} mt-1`}>Based on recent wallet activity (demo)</p>
       <div className="min-h-[0.5rem] flex-1" aria-hidden />
       <div className="mt-auto">
         <div className="mb-1.5 flex items-center justify-between text-xs font-medium text-gray-600">
@@ -330,7 +388,7 @@ function CdBurnRunwayCard({
           />
         </div>
         <p className={`mt-1.5 ${W_CAP}`}>
-          ~{runwayMonths} months of cover at current burn (illustrative)
+          ~{runwayMonths} months of cover at average consumption (illustrative)
         </p>
       </div>
     </section>
@@ -406,13 +464,13 @@ function CdPremiumSplitDonut({ balance }: { balance: number }) {
 // —— Page header ——————————————————————————————————————————————————————
 
 function CdPageHeader({
-  onAddFunds,
   onDownloadStatement,
   onOpenConfigure,
+  onAddFunds,
 }: {
-  onAddFunds: () => void
   onDownloadStatement: () => void
   onOpenConfigure: () => void
+  onAddFunds: () => void
 }) {
   return (
     <header className="mb-3 flex shrink-0 flex-col gap-4 text-left sm:flex-row sm:items-start sm:justify-between">
@@ -424,7 +482,7 @@ function CdPageHeader({
         <button
           type="button"
           onClick={onAddFunds}
-          className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
+          className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700"
         >
           <Banknote className="h-4 w-4 shrink-0" aria-hidden />
           Add funds
@@ -432,9 +490,9 @@ function CdPageHeader({
         <button
           type="button"
           onClick={onDownloadStatement}
-          className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 transition-colors hover:border-indigo-300 hover:bg-indigo-100"
+          className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50"
         >
-          <Download className="h-4 w-4 shrink-0 text-indigo-600" aria-hidden />
+          <Download className="h-4 w-4 shrink-0 text-gray-500" aria-hidden />
           Download statement
         </button>
         <button
@@ -447,6 +505,212 @@ function CdPageHeader({
         </button>
       </div>
     </header>
+  )
+}
+
+const PROFORMA_ICON_BTN =
+  'inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 hover:text-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300'
+
+type CdRechargeModalProps = {
+  open: boolean
+  phase: RechargePhase
+  progress: number
+  amountInr: string
+  amountError: string
+  lastGenerated: { ref: string; amount: number } | null
+  onAmountChange: (value: string) => void
+  onClose: () => void
+  onSubmit: () => void
+  onDownload: () => void
+  onViewProforma: () => void
+  onViewProformaList: () => void
+}
+
+function CdRechargeModal({
+  open,
+  phase,
+  progress,
+  amountInr,
+  amountError,
+  lastGenerated,
+  onAmountChange,
+  onClose,
+  onSubmit,
+  onDownload,
+  onViewProforma,
+  onViewProformaList,
+}: CdRechargeModalProps) {
+  const modalTitle =
+    phase === 'ready' ? 'Proforma invoice ready' : phase === 'generating' ? 'Generating invoice' : 'Add funds'
+  const closable = phase !== 'generating'
+
+  return (
+    <ModalShell open={open} title={modalTitle} onClose={onClose} closable={closable} maxWidthClass="max-w-lg">
+      {phase === 'generating' ? (
+        <div className="py-4 text-center">
+          <Loader2 className="mx-auto h-8 w-8 animate-spin text-indigo-600" aria-hidden />
+          <p className="mt-3 text-sm font-semibold text-gray-900">Generating proforma invoice…</p>
+          <p className="mt-1 text-xs text-gray-500">Applying your amount to the ACKO proforma template.</p>
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-gray-100">
+            <div
+              className="h-full rounded-full bg-indigo-600 transition-[width] duration-75 ease-out"
+              style={{ width: `${progress}%` }}
+              role="progressbar"
+              aria-valuenow={progress}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            />
+          </div>
+          <p className="mt-2 text-xs tabular-nums text-gray-500">{progress}%</p>
+        </div>
+      ) : phase === 'ready' && lastGenerated ? (
+        <div>
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" aria-hidden />
+            <div className="min-w-0">
+              <p className="text-sm text-gray-600">
+                <span className="font-mono text-xs font-semibold text-gray-900">{lastGenerated.ref}</span>
+                {' · '}
+                {formatInr(lastGenerated.amount, false)}
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                Download the PDF and pay via NEFT. Share your UTR with ACKO to credit your CD wallet.
+              </p>
+            </div>
+          </div>
+          <div className="mt-5 flex flex-wrap gap-2 border-t border-gray-100 pt-4">
+            <button
+              type="button"
+              onClick={onViewProformaList}
+              className="cursor-pointer rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-800 transition-colors hover:bg-gray-50"
+            >
+              View in history
+            </button>
+            <button
+              type="button"
+              onClick={onViewProforma}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-800 transition-colors hover:bg-indigo-100"
+            >
+              <Eye className="h-4 w-4 shrink-0" aria-hidden />
+              View PDF
+            </button>
+            <button
+              type="button"
+              onClick={onDownload}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
+            >
+              <Download className="h-4 w-4 shrink-0" aria-hidden />
+              Download
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <p className="text-sm font-semibold text-gray-900">Need to recharge your CD Balance?</p>
+          <p className="mt-1 text-sm leading-relaxed text-gray-600">
+            Raise a proforma invoice for the amount you need. ACKO will share bank and UTR instructions after your
+            request is logged.
+          </p>
+          <label htmlFor="cd-recharge-amount" className="mt-4 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Recharge amount (INR)
+          </label>
+          <input
+            id="cd-recharge-amount"
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
+            placeholder="e.g. 500000"
+            value={amountInr}
+            onChange={(e) => onAmountChange(e.target.value)}
+            className="mt-1.5 w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+          />
+          {amountError ? <p className="mt-2 text-xs font-medium text-red-600">{amountError}</p> : null}
+          <p className="mt-2 text-xs text-gray-500">
+            Billing entity: {CD_PROFORMA_EMPLOYER.legalName}
+            {CD_PROFORMA_EMPLOYER.gstin ? ` · GSTIN ${CD_PROFORMA_EMPLOYER.gstin}` : ''}
+          </p>
+          <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="cursor-pointer rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onSubmit}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
+            >
+              <Banknote className="h-4 w-4 shrink-0" aria-hidden />
+              Generate proforma invoice
+            </button>
+          </div>
+        </>
+      )}
+    </ModalShell>
+  )
+}
+
+function ProformaViewerModal({
+  open,
+  invoiceRef,
+  pdfUrl,
+  onClose,
+  onDownload,
+}: {
+  open: boolean
+  invoiceRef: string
+  pdfUrl: string | null
+  onClose: () => void
+  onDownload: () => void
+}) {
+  return (
+    <ModalShell
+      open={open}
+      title={`Proforma ${invoiceRef}`}
+      onClose={onClose}
+      maxWidthClass="max-w-4xl"
+      bodyClassName="max-h-[min(85vh,720px)] overflow-hidden p-0"
+    >
+      {pdfUrl ? (
+        <iframe title={`Proforma invoice ${invoiceRef}`} src={pdfUrl} className="h-[min(75vh,680px)] w-full border-0" />
+      ) : (
+        <div className="flex items-center justify-center px-4 py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-indigo-600" aria-hidden />
+        </div>
+      )}
+      <div className="flex justify-end gap-2 border-t border-gray-100 px-4 py-3">
+        <button
+          type="button"
+          onClick={onClose}
+          className="cursor-pointer rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
+        >
+          Close
+        </button>
+        <button
+          type="button"
+          onClick={onDownload}
+          disabled={!pdfUrl}
+          className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Download className="h-4 w-4 shrink-0" aria-hidden />
+          Download
+        </button>
+      </div>
+    </ModalShell>
+  )
+}
+
+function HistorySubTabBadge({ n, active }: { n: number; active: boolean }) {
+  return (
+    <span
+      className={`ml-2 inline-flex min-h-[1.25rem] min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums leading-none ${
+        active ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'
+      }`}
+    >
+      {n}
+    </span>
   )
 }
 
@@ -503,27 +767,37 @@ function ModalShell({
   title,
   onClose,
   children,
+  closable = true,
+  maxWidthClass = 'max-w-lg',
+  bodyClassName = 'max-h-[min(80vh,520px)] overflow-y-auto px-4 py-4',
 }: {
   open: boolean
   title: string
   onClose: () => void
   children: ReactNode
+  closable?: boolean
+  maxWidthClass?: string
+  bodyClassName?: string
 }) {
   useEffect(() => {
-    if (!open) return
+    if (!open || !closable) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose])
+  }, [open, onClose, closable])
 
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close modal" onClick={onClose} />
+      {closable ? (
+        <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close modal" onClick={onClose} />
+      ) : (
+        <div className="absolute inset-0 bg-black/40" aria-hidden />
+      )}
       <div
-        className="relative w-full max-w-lg rounded-xl border border-gray-200 bg-white shadow-xl"
+        className={`relative w-full ${maxWidthClass} rounded-xl border border-gray-200 bg-white shadow-xl`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
@@ -532,11 +806,15 @@ function ModalShell({
           <h2 id="modal-title" className="text-sm font-bold text-gray-900">
             {title}
           </h2>
-          <button type="button" onClick={onClose} className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100" aria-label="Close">
-            <X className="h-4 w-4" />
-          </button>
+          {closable ? (
+            <button type="button" onClick={onClose} className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100" aria-label="Close">
+              <X className="h-4 w-4" />
+            </button>
+          ) : (
+            <span className="h-8 w-8" aria-hidden />
+          )}
         </div>
-        <div className="max-h-[min(80vh,520px)] overflow-y-auto px-4 py-4">{children}</div>
+        <div className={bodyClassName}>{children}</div>
       </div>
     </div>
   )
@@ -950,9 +1228,16 @@ export default function CdBalanceEnterprise() {
   const navigate = useNavigate()
   const { query: globalSearchQuery } = useGlobalSearch()
   const [configureModalOpen, setConfigureModalOpen] = useState(false)
-  const [addFundsOpen, setAddFundsOpen] = useState(false)
+  const [rechargePanelOpen, setRechargePanelOpen] = useState(false)
+  const [rechargePhase, setRechargePhase] = useState<RechargePhase>('form')
+  const [rechargeProgress, setRechargeProgress] = useState(0)
   const [proformaAmountInr, setProformaAmountInr] = useState('')
   const [proformaAmountError, setProformaAmountError] = useState('')
+  const [lastGeneratedProforma, setLastGeneratedProforma] = useState<{ id: string; ref: string; amount: number } | null>(
+    null,
+  )
+  const proformaPdfCache = useRef<Map<string, Uint8Array>>(new Map())
+  const proformaGenTimers = useRef<number[]>([])
   const [mainTab, setMainTab] = useState<MainTab>('history')
   const [disputesList, setDisputesList] = useState<DisputeRecord[]>(() => [...INITIAL_MOCK_DISPUTES])
   const [disputeModalOpen, setDisputeModalOpen] = useState(false)
@@ -967,6 +1252,9 @@ export default function CdBalanceEnterprise() {
 
   const [dateRange, setDateRange] = useState<DateRangePreset>('30d')
   const [typeFilter, setTypeFilter] = useState<string>('all')
+  const [statusFilter, setStatusFilter] = useState<TxStatusFilter>('all')
+  const [historySubTab, setHistorySubTab] = useState<HistorySubTab>('transactions')
+  const [proformaList, setProformaList] = useState<ProformaInvoice[]>(() => [...INITIAL_PROFORMA_INVOICES])
   const [page, setPage] = useState(1)
   const pageSize = 18
 
@@ -984,10 +1272,14 @@ export default function CdBalanceEnterprise() {
   const [disputeReason, setDisputeReason] = useState('amount_mismatch')
   const [disputeNotes, setDisputeNotes] = useState('')
   const [copied, setCopied] = useState(false)
+  const [proformaViewer, setProformaViewer] = useState<{ pi: ProformaInvoice; url: string } | null>(null)
+  const proformaViewerUrlRef = useRef<string | null>(null)
 
   const filtered = useMemo(() => {
     return ALL_TRANSACTIONS.filter((r) => {
       if (typeFilter !== 'all' && r.type !== typeFilter) return false
+      if (statusFilter === 'pending_recon' && r.status !== 'pending_recon') return false
+      if (statusFilter === 'settled' && r.status !== 'settled') return false
       if (!transactionInDateRange(r.at, dateRange)) return false
       const q = globalSearchQuery.trim().toLowerCase()
       if (q) {
@@ -997,7 +1289,12 @@ export default function CdBalanceEnterprise() {
       }
       return true
     })
-  }, [dateRange, typeFilter, globalSearchQuery])
+  }, [dateRange, typeFilter, statusFilter, globalSearchQuery])
+
+  const pendingReconCount = useMemo(
+    () => ALL_TRANSACTIONS.filter((r) => r.status === 'pending_recon').length,
+    [],
+  )
 
   const totalFiltered = filtered.length
   const pageCount = Math.max(1, Math.ceil(totalFiltered / pageSize))
@@ -1009,7 +1306,114 @@ export default function CdBalanceEnterprise() {
 
   useEffect(() => {
     setPage(1)
-  }, [dateRange, typeFilter, globalSearchQuery])
+  }, [dateRange, typeFilter, statusFilter, globalSearchQuery, historySubTab])
+
+  useEffect(() => {
+    return () => {
+      proformaGenTimers.current.forEach((t) => window.clearTimeout(t))
+      if (proformaViewerUrlRef.current) {
+        URL.revokeObjectURL(proformaViewerUrlRef.current)
+      }
+    }
+  }, [])
+
+  const ensureProformaBytes = useCallback(async (pi: ProformaInvoice): Promise<Uint8Array> => {
+    let bytes = proformaPdfCache.current.get(pi.id)
+    if (!bytes) {
+      bytes = await generateCdProformaPdf({
+        invoiceRef: pi.ref,
+        amountInr: pi.amount,
+        requestedAt: new Date(pi.requestedAt),
+        employerName: pi.employerName,
+        gstin: CD_PROFORMA_EMPLOYER.gstin,
+      })
+      proformaPdfCache.current.set(pi.id, bytes)
+    }
+    return bytes
+  }, [])
+
+  const closeProformaViewer = useCallback(() => {
+    if (proformaViewerUrlRef.current) {
+      URL.revokeObjectURL(proformaViewerUrlRef.current)
+      proformaViewerUrlRef.current = null
+    }
+    setProformaViewer(null)
+  }, [])
+
+  const viewProforma = useCallback(
+    async (pi: ProformaInvoice) => {
+      closeProformaViewer()
+      setProformaViewer({ pi, url: '' })
+      try {
+        const bytes = await ensureProformaBytes(pi)
+        const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }))
+        proformaViewerUrlRef.current = url
+        setProformaViewer({ pi, url })
+      } catch {
+        closeProformaViewer()
+        window.alert('Could not open the proforma PDF. Try downloading instead.')
+      }
+    },
+    [closeProformaViewer, ensureProformaBytes],
+  )
+
+  const resetRechargeForm = useCallback(() => {
+    setProformaAmountInr('')
+    setProformaAmountError('')
+    setRechargePhase('form')
+    setRechargeProgress(0)
+    setLastGeneratedProforma(null)
+  }, [])
+
+  const closeRechargePanel = useCallback(() => {
+    setRechargePanelOpen(false)
+    resetRechargeForm()
+  }, [resetRechargeForm])
+
+  const openRechargePanel = useCallback(() => {
+    resetRechargeForm()
+    setRechargePanelOpen(true)
+  }, [resetRechargeForm])
+
+  const downloadProformaById = useCallback(
+    async (pi: ProformaInvoice) => {
+      const bytes = await ensureProformaBytes(pi)
+      downloadProformaPdfBytes(bytes, proformaDownloadFilename(pi.employerName, pi.ref))
+    },
+    [ensureProformaBytes],
+  )
+
+  const downloadLastGenerated = useCallback(() => {
+    if (!lastGeneratedProforma) return
+    const cached = proformaPdfCache.current.get(lastGeneratedProforma.id)
+    if (cached) {
+      downloadProformaPdfBytes(
+        cached,
+        proformaDownloadFilename(CD_PROFORMA_EMPLOYER.legalName, lastGeneratedProforma.ref),
+      )
+      return
+    }
+    void downloadProformaById({
+      id: lastGeneratedProforma.id,
+      ref: lastGeneratedProforma.ref,
+      requestedAt: new Date().toISOString(),
+      amount: lastGeneratedProforma.amount,
+      status: 'issued',
+      employerName: CD_PROFORMA_EMPLOYER.legalName,
+    })
+  }, [lastGeneratedProforma, downloadProformaById])
+
+  const viewLastGeneratedProforma = useCallback(() => {
+    if (!lastGeneratedProforma) return
+    void viewProforma({
+      id: lastGeneratedProforma.id,
+      ref: lastGeneratedProforma.ref,
+      requestedAt: new Date().toISOString(),
+      amount: lastGeneratedProforma.amount,
+      status: 'issued',
+      employerName: CD_PROFORMA_EMPLOYER.legalName,
+    })
+  }, [lastGeneratedProforma, viewProforma])
 
   const openTxDetail = useCallback((tx: TransactionRow) => {
     setSelectedTx(tx)
@@ -1038,6 +1442,81 @@ export default function CdBalanceEnterprise() {
   const openDisputesHub = useCallback(() => {
     setMainTab('disputes')
   }, [])
+
+  const openReconcile = useCallback(() => {
+    setMainTab('history')
+    setHistorySubTab('transactions')
+    setStatusFilter('pending_recon')
+    setPage(1)
+  }, [])
+
+  const submitProformaRequest = useCallback(
+    (amountInr: number) => {
+      const n = Math.floor(1000 + Math.random() * 8999)
+      const id = `pi-${Date.now()}`
+      const ref = `PI-2026-${n}`
+      const requestedAt = new Date().toISOString()
+      const row: ProformaInvoice = {
+        id,
+        ref,
+        requestedAt,
+        amount: amountInr,
+        status: 'issued',
+        employerName: CD_PROFORMA_EMPLOYER.legalName,
+      }
+
+      setRechargePhase('generating')
+      setRechargeProgress(0)
+      proformaGenTimers.current.forEach((t) => window.clearTimeout(t))
+      proformaGenTimers.current = []
+
+      let step = 0
+      const tick = () => {
+        step += 1
+        const pct = Math.min(100, Math.round((step / PROFORMA_PDF_STEPS) * 100))
+        if (step < PROFORMA_PDF_STEPS) {
+          setRechargeProgress(pct)
+          proformaGenTimers.current.push(window.setTimeout(tick, PROFORMA_PDF_STEP_MS))
+        } else {
+          void (async () => {
+            try {
+              const bytes = await generateCdProformaPdf({
+                invoiceRef: ref,
+                amountInr,
+                requestedAt: new Date(requestedAt),
+                employerName: CD_PROFORMA_EMPLOYER.legalName,
+                gstin: CD_PROFORMA_EMPLOYER.gstin,
+              })
+              proformaPdfCache.current.set(id, bytes)
+              setProformaList((prev) => [row, ...prev])
+              setLastGeneratedProforma({ id, ref, amount: amountInr })
+              setRechargeProgress(100)
+              setRechargePhase('ready')
+              setMainTab('history')
+              setHistorySubTab('proforma')
+            } catch {
+              setProformaAmountError('Could not generate the proforma PDF. Try again.')
+              setRechargePhase('form')
+              setRechargeProgress(0)
+            }
+          })()
+        }
+      }
+      proformaGenTimers.current.push(window.setTimeout(tick, PROFORMA_PDF_STEP_MS))
+    },
+    [],
+  )
+
+  const handleGenerateProforma = useCallback(() => {
+    const raw = proformaAmountInr.replace(/,/g, '').trim()
+    const n = Number(raw)
+    if (!Number.isFinite(n) || n <= 0) {
+      setProformaAmountError('Enter a valid amount in INR (greater than zero).')
+      return
+    }
+    setProformaAmountError('')
+    submitProformaRequest(Math.round(n))
+  }, [proformaAmountInr, submitProformaRequest])
 
   const submitDisputeDemo = useCallback(() => {
     const linked =
@@ -1109,7 +1588,7 @@ export default function CdBalanceEnterprise() {
     <div className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden bg-gray-50 px-6 py-3 text-left lg:px-8">
       <div className="mx-auto flex h-full min-h-0 w-full max-w-[1440px] flex-1 flex-col">
         <CdPageHeader
-          onAddFunds={() => setAddFundsOpen(true)}
+          onAddFunds={openRechargePanel}
           onDownloadStatement={() => {
             const blob = new Blob(['CD statement (demo)'], { type: 'text/plain' })
             const a = document.createElement('a')
@@ -1132,93 +1611,58 @@ export default function CdBalanceEnterprise() {
         </div>
 
         {MOCK_METRICS.pendingReconCount > 0 ? (
-          <div className="mb-3 flex flex-shrink-0 items-start gap-2 rounded-lg border border-amber-200/90 bg-amber-50/90 px-3 py-2.5 text-sm text-amber-950">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden />
-            <div className="min-w-0 flex-1">
-              <p className="font-medium">Attention needed</p>
-              <p className="text-xs text-amber-900/90">
-                {MOCK_METRICS.pendingReconCount} transaction{MOCK_METRICS.pendingReconCount !== 1 ? 's' : ''} pending
-                reconciliation ({formatInr(MOCK_METRICS.pendingReconAmount, false)}). Filter by status in the log or open{' '}
-                <button
-                  type="button"
-                  className="font-semibold text-indigo-700 underline decoration-indigo-300 underline-offset-2 hover:text-indigo-900"
-                  onClick={() => openDisputesHub()}
-                >
-                  Disputes
-                </button>{' '}
-                if you need to raise an issue.
-              </p>
+          <div className="mb-3 flex flex-shrink-0 flex-col gap-2 rounded-lg border border-amber-200/90 bg-amber-50/90 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+            <div className="flex min-w-0 items-start gap-2 text-sm text-amber-950">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden />
+              <div className="min-w-0">
+                <p className="font-medium">Reconciliation needed</p>
+                <p className="text-xs text-amber-900/90">
+                  {MOCK_METRICS.pendingReconCount} transaction{MOCK_METRICS.pendingReconCount !== 1 ? 's' : ''} pending
+                  reconciliation ({formatInr(MOCK_METRICS.pendingReconAmount, false)}). Review and confirm before month-end close.
+                </p>
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={openReconcile}
+              className="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-amber-950 transition-colors hover:bg-amber-100/80"
+            >
+              Reconcile now
+            </button>
           </div>
         ) : null}
 
-        <ModalShell
-          open={addFundsOpen}
-          title="Request proforma invoice"
-          onClose={() => {
-            setAddFundsOpen(false)
-            setProformaAmountInr('')
-            setProformaAmountError('')
+        <CdRechargeModal
+          open={rechargePanelOpen}
+          phase={rechargePhase}
+          progress={rechargeProgress}
+          amountInr={proformaAmountInr}
+          amountError={proformaAmountError}
+          lastGenerated={lastGeneratedProforma ? { ref: lastGeneratedProforma.ref, amount: lastGeneratedProforma.amount } : null}
+          onAmountChange={(value) => {
+            setProformaAmountInr(value)
+            if (proformaAmountError) setProformaAmountError('')
           }}
-        >
-          <p className="text-sm text-gray-600">
-            Raise a proforma invoice for the CD top-up amount you need. ACKO will share bank / UTR instructions after your request is
-            logged (demo flow — nothing is sent).
-          </p>
-          <label htmlFor="cd-proforma-amount" className="mt-4 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-            Amount (INR)
-          </label>
-          <input
-            id="cd-proforma-amount"
-            type="text"
-            inputMode="decimal"
-            autoComplete="off"
-            placeholder="e.g. 500000"
-            value={proformaAmountInr}
-            onChange={(e) => {
-              setProformaAmountInr(e.target.value)
-              if (proformaAmountError) setProformaAmountError('')
-            }}
-            className="mt-1.5 w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-          />
-          {proformaAmountError ? <p className="mt-2 text-xs font-medium text-red-600">{proformaAmountError}</p> : null}
-          <p className="mt-3 text-xs leading-relaxed text-gray-500">
-            Coordinate internally before submitting. You’ll receive the proforma reference on email in production.
-          </p>
-          <div className="mt-5 flex flex-wrap gap-2 border-t border-gray-100 pt-4">
-            <button
-              type="button"
-              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
-              onClick={() => {
-                setAddFundsOpen(false)
-                setProformaAmountInr('')
-                setProformaAmountError('')
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
-              onClick={() => {
-                const raw = proformaAmountInr.replace(/,/g, '').trim()
-                const n = Number(raw)
-                if (!Number.isFinite(n) || n <= 0) {
-                  setProformaAmountError('Enter a valid amount in INR (greater than zero).')
-                  return
-                }
-                setProformaAmountError('')
-                window.alert(
-                  `Demo only: Proforma invoice request for ${formatInr(Math.round(n))} would be shared with ACKO for treasury processing.`,
-                )
-                setAddFundsOpen(false)
-                setProformaAmountInr('')
-              }}
-            >
-              Request proforma invoice
-            </button>
-          </div>
-        </ModalShell>
+          onClose={closeRechargePanel}
+          onSubmit={handleGenerateProforma}
+          onDownload={downloadLastGenerated}
+          onViewProforma={viewLastGeneratedProforma}
+          onViewProformaList={() => {
+            closeRechargePanel()
+            setMainTab('history')
+            setHistorySubTab('proforma')
+          }}
+        />
+
+        <ProformaViewerModal
+          open={proformaViewer != null}
+          invoiceRef={proformaViewer?.pi.ref ?? ''}
+          pdfUrl={proformaViewer?.url || null}
+          onClose={closeProformaViewer}
+          onDownload={() => {
+            if (proformaViewer?.pi) void downloadProformaById(proformaViewer.pi)
+          }}
+        />
 
         <ModalShell open={disputeModalOpen} title="Raise a dispute" onClose={() => setDisputeModalOpen(false)}>
           <DisputeRaiseFormBody
@@ -1327,7 +1771,7 @@ export default function CdBalanceEnterprise() {
                     Edit alerts
                   </button>
                 </div>
-              ) : (
+              ) : mainTab === 'disputes' ? (
                 <button
                   type="button"
                   onClick={() => openRaiseDispute(null)}
@@ -1336,15 +1780,63 @@ export default function CdBalanceEnterprise() {
                   <Scale className="h-4 w-4 shrink-0" aria-hidden />
                   Raise a dispute
                 </button>
-              )}
+              ) : pendingReconCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={openReconcile}
+                  className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm transition-colors hover:border-gray-300 hover:bg-gray-50 sm:w-auto"
+                >
+                  <Clock className="h-4 w-4 shrink-0 text-amber-600" aria-hidden />
+                  Reconcile ({pendingReconCount})
+                </button>
+              ) : null}
             </div>
           </div>
 
           {mainTab === 'history' && (
             <section
               className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
-              aria-label="CD transaction history"
+              aria-label="CD wallet activity"
             >
+              <div
+                className="relative flex shrink-0 flex-wrap gap-6 border-b border-gray-200 px-4 pt-3 sm:gap-8 sm:px-6"
+                role="tablist"
+                aria-label="Wallet activity views"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={historySubTab === 'transactions'}
+                  id="cd-tab-transactions"
+                  onClick={() => setHistorySubTab('transactions')}
+                  className={`-mb-px inline-flex cursor-pointer items-center border-b-2 pb-2.5 pt-0.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 ${
+                    historySubTab === 'transactions'
+                      ? 'border-indigo-600 text-indigo-700'
+                      : 'border-transparent text-gray-500 hover:border-gray-200 hover:text-gray-800'
+                  }`}
+                >
+                  Transaction history
+                  <HistorySubTabBadge n={ALL_TRANSACTIONS.length} active={historySubTab === 'transactions'} />
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={historySubTab === 'proforma'}
+                  id="cd-tab-proforma"
+                  onClick={() => setHistorySubTab('proforma')}
+                  className={`-mb-px inline-flex cursor-pointer items-center border-b-2 pb-2.5 pt-0.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 ${
+                    historySubTab === 'proforma'
+                      ? 'border-indigo-600 text-indigo-700'
+                      : 'border-transparent text-gray-500 hover:border-gray-200 hover:text-gray-800'
+                  }`}
+                >
+                  Proforma invoices
+                  <HistorySubTabBadge n={proformaList.length} active={historySubTab === 'proforma'} />
+                </button>
+              </div>
+
+          {historySubTab === 'transactions' ? (
+          <>
           <div className="flex-shrink-0 border-b border-gray-100 px-4 py-3 sm:px-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-gray-500">Filter and export</p>
@@ -1369,6 +1861,16 @@ export default function CdBalanceEnterprise() {
                   <option value="deduction">Deduction</option>
                   <option value="deposit">Deposit</option>
                   <option value="refund">Refund</option>
+                </select>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as TxStatusFilter)}
+                  className="h-8 min-w-[7.5rem] cursor-pointer rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-800 outline-none transition-colors hover:border-gray-300 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
+                  aria-label="Settlement status"
+                >
+                  <option value="all">All statuses</option>
+                  <option value="settled">Settled</option>
+                  <option value="pending_recon">Pending recon</option>
                 </select>
                 <button
                   type="button"
@@ -1510,7 +2012,90 @@ export default function CdBalanceEnterprise() {
             </table>
             </div>
           </div>
+          </>
+          ) : (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex-shrink-0 border-b border-gray-100 px-4 py-3 sm:px-6">
+              <p className="text-sm text-gray-500">Proforma invoice requests for CD wallet top-ups.</p>
+            </div>
+            <div className="flex-1 overflow-y-auto overflow-x-hidden [min-height:max(16rem,28dvh)]">
+              <table className="w-full min-w-0 table-fixed border-collapse text-left text-sm">
+                <thead className="sticky top-0 z-[1]">
+                  <tr className="border-b border-gray-200 bg-gray-50">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Reference</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Requested</th>
+                    <th className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Amount</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Status</th>
+                    <th className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {proformaList.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-14 text-center align-middle">
+                        <p className="text-sm text-gray-500">No proforma invoices yet.</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            openRechargePanel()
+                          }}
+                          className="mt-2 text-sm font-semibold text-indigo-600 hover:underline"
+                        >
+                          Add funds
+                        </button>
+                      </td>
+                    </tr>
+                  ) : (
+                    proformaList.map((pi) => (
+                      <tr key={pi.id} className="text-gray-800 hover:bg-gray-50/50">
+                        <td className="px-4 py-3 font-mono text-xs font-medium text-gray-900">{pi.ref}</td>
+                        <td className="px-3 py-3 text-xs text-gray-600">{formatDateTime(pi.requestedAt)}</td>
+                        <td className="px-3 py-3 text-right text-xs font-semibold tabular-nums text-gray-900">
+                          {formatInr(pi.amount, false)}
+                        </td>
+                        <td className="px-3 py-3">
+                          <span
+                            className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${proformaStatusClass(pi.status)}`}
+                          >
+                            {proformaStatusLabel(pi.status)}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          {pi.status === 'issued' || pi.status === 'paid' ? (
+                            <div className="inline-flex items-center justify-end gap-0.5">
+                              <button
+                                type="button"
+                                className={PROFORMA_ICON_BTN}
+                                aria-label={`View proforma ${pi.ref}`}
+                                title="View proforma"
+                                onClick={() => void viewProforma(pi)}
+                              >
+                                <Eye className="h-4 w-4 shrink-0" aria-hidden />
+                              </button>
+                              <button
+                                type="button"
+                                className={PROFORMA_ICON_BTN}
+                                aria-label={`Download proforma ${pi.ref}`}
+                                title="Download proforma"
+                                onClick={() => void downloadProformaById(pi)}
+                              >
+                                <Download className="h-4 w-4 shrink-0" aria-hidden />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          )}
 
+          {historySubTab === 'transactions' ? (
           <div className="flex flex-shrink-0 flex-wrap items-center justify-between gap-2 border-t border-gray-100 bg-white px-6 py-3 sm:rounded-b-xl">
             <p className="text-xs font-normal text-gray-400">{summaryLeft}</p>
             <div className="flex items-center gap-2 sm:gap-3" role="navigation" aria-label="Transaction table pagination">
@@ -1555,6 +2140,7 @@ export default function CdBalanceEnterprise() {
               </button>
             </div>
           </div>
+          ) : null}
             </section>
           )}
           {mainTab === 'disputes' && (

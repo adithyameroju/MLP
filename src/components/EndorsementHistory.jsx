@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { Eye, Download, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Clock, X, Loader2, FileText, Check, Heart, Shield, ChevronDown, ChevronUp, Plus, Trash2, Upload, CheckCircle, Wallet, Wrench, Search } from 'lucide-react'
+import { Eye, Download, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Clock, X, Loader2, FileText, Check, Heart, Shield, ChevronDown, ChevronUp, Plus, Trash2, Upload, CheckCircle, Wallet, Wrench, Search, FileDown } from 'lucide-react'
 import { useEndorsements } from '../store/EndorsementStore'
 import { basePlans, gpaBasePlans, dependentRelations } from '../data/mockData'
 import {
@@ -19,7 +19,33 @@ import PlanSelection from './PlanSelection'
 import DependentForm from './DependentForm'
 import EndorsementHistoryScheduleV2 from './EndorsementHistoryScheduleV2'
 import EndorsementSortTh from './EndorsementSortTh'
-import { rowMatchesSearch, ENDORSEMENT_THEAD_TR_CLASS, entryMatchesDateRange } from './endorsementScheduleShared'
+import {
+  rowMatchesSearch,
+  ENDORSEMENT_THEAD_TR_CLASS,
+  entryMatchesDateRange,
+  EndorsementScheduleStatusCell,
+  getEndorsementScheduleStatus,
+  isScheduleDocumentReady,
+  canViewEndorsementSchedule,
+  downloadEndorsementDetailsExcel,
+  eligibleForSchedule,
+  generateScheduleForRows,
+  scheduleStatusSortRank,
+  endorsementNumber,
+  entryCdImpactInr,
+} from './endorsementScheduleShared'
+import {
+  ScheduleDocumentViewerModal,
+  SchedulePreviewGenerateModal,
+  ENDORSEMENT_TABLE_TH_CLASS,
+  ENDORSEMENT_TABLE_ICON_BTN,
+  ENDORSEMENT_SCHEDULE_GENERATE_BTN,
+} from './ScheduleDocumentModals'
+import {
+  generateEndorsementSchedulePdf,
+  downloadSchedulePdfBytes,
+  schedulePdfFilename,
+} from '../lib/generateEndorsementSchedulePdf'
 import {
   ResultCountCell,
   formatHistoryTableDateTime,
@@ -247,9 +273,9 @@ function downloadHistoryRowCsv(row) {
   )
 }
 
-/** Flat filled CTAs — soft tint + darker label (matches history table reference). */
+/** Flat filled CTAs — compact for dense history table rows. */
 const HISTORY_CTA_BASE =
-  'inline-flex h-8 min-w-[4.75rem] w-[5rem] shrink-0 items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-medium border-0 shadow-none transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1'
+  'inline-flex h-7 min-w-[3.75rem] w-[4rem] shrink-0 items-center justify-center gap-1 rounded-md px-1.5 text-[11px] font-medium border-0 shadow-none transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1'
 
 const HISTORY_CTA_VIEW =
   `${HISTORY_CTA_BASE} bg-[#f0f2ff] text-[#4c46d9] hover:bg-[#e6eaff] focus-visible:ring-[#4c46d9]/35`
@@ -260,11 +286,9 @@ const HISTORY_CTA_FIX =
 const HISTORY_CTA_TRACK =
   `${HISTORY_CTA_BASE} bg-amber-50 text-amber-900 hover:bg-amber-100/95 focus-visible:ring-amber-300`
 
-/** Icon-only download — light gray fill, slate icon (no label). */
-const HISTORY_DOWNLOAD_ICON_BTN =
-  'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-0 shadow-none bg-[#f3f4f6] text-[#4b5563] hover:bg-gray-200 hover:text-gray-800 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400/40 focus-visible:ring-offset-1'
+const HISTORY_ROW_ICON_BTN = ENDORSEMENT_TABLE_ICON_BTN
 
-function V2TabCountBadge({ n, active }) {
+function V3TabCountBadge({ n, active }) {
   return (
     <span
       className={`ml-2 inline-flex min-h-[1.25rem] min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums leading-none ${
@@ -281,32 +305,121 @@ function StatusBadge({ status }) {
 }
 
 /**
- * @param {{ scheduleExperienceVersion?: 'v1' | 'v2' }} props — defaults to V2 (tabs: all / pending / generated schedules).
- * V2: three tabs — full history, pending schedules, generated schedules (dashboard).
+ * @param {{ scheduleExperienceVersion?: 'v1' | 'v2' | 'v3' | 'v4' }} props — V2/V4: single panel; V3: Endorsements + schedules tabs.
  */
-export default function EndorsementHistory({ scheduleExperienceVersion = 'v2' }) {
-  const { history } = useEndorsements()
+export default function EndorsementHistory({ scheduleExperienceVersion = 'v3' }) {
+  const { history, updateEntry } = useEndorsements()
+  const isV1 = scheduleExperienceVersion === 'v1'
   const isV2 = scheduleExperienceVersion === 'v2'
-  const [v2MainTab, setV2MainTab] = useState('all')
+  const isV3 = scheduleExperienceVersion === 'v3'
+  const isV4 = scheduleExperienceVersion === 'v4'
+  const isV2Like = isV2 || isV4
+  const isV2StyleEndorsements = isV2Like || isV3
+  const showEndorsementsScheduleChips = isV2Like
+  const [v3MainTab, setV3MainTab] = useState('endorsements')
   const [currentPage, setCurrentPage] = useState(1)
   const [errorPanel, setErrorPanel] = useState(null)
   const [progressPanel, setProgressPanel] = useState(null)
   const [viewPanel, setViewPanel] = useState(null)
+  const [schedulePreviewRow, setSchedulePreviewRow] = useState(null)
+  const [schedulePreviewGenerating, setSchedulePreviewGenerating] = useState(false)
+  const [scheduleViewer, setScheduleViewer] = useState(null)
+  const [scheduleViewerUrl, setScheduleViewerUrl] = useState(null)
+  const [scheduleViewerLoading, setScheduleViewerLoading] = useState(false)
+  const schedulePdfCache = useRef(new Map())
+  const scheduleViewerUrlRef = useRef(null)
+  const genTimersRef = useRef([])
 
   const [statusFilter, setStatusFilter] = useState('All')
+  const [scheduleChipFilter, setScheduleChipFilter] = useState('all')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [historySort, setHistorySort] = useState(() => ({ key: 'date', dir: 'desc' }))
   const [historySearchQuery, setHistorySearchQuery] = useState('')
 
+  useEffect(() => {
+    return () => {
+      genTimersRef.current.forEach((tid) => window.clearTimeout(tid))
+      if (scheduleViewerUrlRef.current) URL.revokeObjectURL(scheduleViewerUrlRef.current)
+    }
+  }, [])
+
+  const closeScheduleViewer = () => {
+    if (scheduleViewerUrlRef.current) {
+      URL.revokeObjectURL(scheduleViewerUrlRef.current)
+      scheduleViewerUrlRef.current = null
+    }
+    setScheduleViewerUrl(null)
+    setScheduleViewer(null)
+    setScheduleViewerLoading(false)
+  }
+
+  const buildSchedulePdfBytes = async (row) => {
+    const cached = schedulePdfCache.current.get(row.id)
+    if (cached) return cached
+    const bytes = await generateEndorsementSchedulePdf({
+      scheduleRef: row.scheduleRef,
+      endorsementNo: endorsementNumber(row),
+      activity: row.action ?? '',
+      amountInr: entryCdImpactInr(row),
+      generatedAt: new Date(row.scheduleGeneratedAt || row.recordedAt || row.date),
+    })
+    schedulePdfCache.current.set(row.id, bytes)
+    return bytes
+  }
+
+  const downloadSchedulePdfForRow = async (row) => {
+    if (!isScheduleDocumentReady(row)) return
+    const bytes = await buildSchedulePdfBytes(row)
+    downloadSchedulePdfBytes(bytes, schedulePdfFilename(row.scheduleRef))
+  }
+
+  const openScheduleViewer = async (row) => {
+    if (!row?.scheduleRef || row.schedulePdfStatus === 'generating') return
+    closeScheduleViewer()
+    setScheduleViewer(row)
+    setScheduleViewerLoading(true)
+    try {
+      const bytes = await buildSchedulePdfBytes(row)
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }))
+      scheduleViewerUrlRef.current = url
+      setScheduleViewerUrl(url)
+    } catch {
+      closeScheduleViewer()
+      window.alert('Could not open the schedule PDF. Try downloading instead.')
+    } finally {
+      setScheduleViewerLoading(false)
+    }
+  }
+
+  const runGenerateForRow = (row, { closePreview = false } = {}) => {
+    if (!eligibleForSchedule(row)) return
+    if (closePreview) setSchedulePreviewGenerating(true)
+    generateScheduleForRows([row.id], updateEntry, genTimersRef)
+    if (closePreview) {
+      window.setTimeout(() => {
+        setSchedulePreviewGenerating(false)
+        setSchedulePreviewRow(null)
+      }, 600)
+    }
+  }
+
   function handleHistorySort(columnKey) {
     setHistorySort((prev) => {
       if (prev.key === columnKey) return { key: columnKey, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
-      const preferDesc = columnKey === 'date' || columnKey === 'result'
+      const preferDesc = columnKey === 'date' || columnKey === 'result' || columnKey === 'scheduleStatus'
       return { key: columnKey, dir: preferDesc ? 'desc' : 'asc' }
     })
     setCurrentPage(1)
   }
+
+  const scheduleChipCounts = useMemo(
+    () => ({
+      pending: history.filter((r) => getEndorsementScheduleStatus(r) === 'pending').length,
+      generated: history.filter((r) => getEndorsementScheduleStatus(r) === 'generated').length,
+    }),
+    [history],
+  )
 
   const filteredHistory = useMemo(() => {
     let items = [...history]
@@ -316,8 +429,11 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v2' })
     if (dateFrom || dateTo) {
       items = items.filter((r) => entryMatchesDateRange(r, dateFrom, dateTo))
     }
-    if (isV2 && v2MainTab === 'all' && historySearchQuery.trim()) {
+    if (isV2StyleEndorsements && historySearchQuery.trim()) {
       items = items.filter((r) => rowMatchesSearch(r, historySearchQuery))
+    }
+    if (showEndorsementsScheduleChips && scheduleChipFilter !== 'all') {
+      items = items.filter((r) => getEndorsementScheduleStatus(r) === scheduleChipFilter)
     }
     const { key: sortKey, dir: sortDir } = historySort
     const m = sortDir === 'asc' ? 1 : -1
@@ -335,12 +451,16 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v2' })
           return m * String(a.status || '').localeCompare(String(b.status || ''))
         case 'result':
           return m * ((Number(a.count) || 0) - (Number(b.count) || 0))
+        case 'scheduleStatus':
+          return m * (scheduleStatusSortRank(a) - scheduleStatusSortRank(b))
+        case 'scheduleRef':
+          return m * String(a.scheduleRef || '').localeCompare(String(b.scheduleRef || ''))
         default:
           return 0
       }
     })
     return items
-  }, [history, statusFilter, dateFrom, dateTo, historySort, isV2, v2MainTab, historySearchQuery])
+  }, [history, statusFilter, dateFrom, dateTo, historySort, isV2StyleEndorsements, historySearchQuery, scheduleChipFilter, showEndorsementsScheduleChips])
 
   const perPage = 10
   const totalPages = Math.max(1, Math.ceil(filteredHistory.length / perPage))
@@ -352,28 +472,17 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v2' })
   }, [totalPages])
 
   const hasFilters = statusFilter !== 'All' || dateFrom || dateTo
-  const hasFiltersAllEndorsementsTab = hasFilters || historySearchQuery.trim().length > 0
+  const hasFiltersAllEndorsementsTab =
+    hasFilters || historySearchQuery.trim().length > 0 || (showEndorsementsScheduleChips && scheduleChipFilter !== 'all')
   const clearFilters = () => {
     setStatusFilter('All')
+    setScheduleChipFilter('all')
     setDateFrom('')
     setDateTo('')
     setHistorySort({ key: 'date', dir: 'desc' })
     setHistorySearchQuery('')
     setCurrentPage(1)
   }
-
-  const scheduleSortedForBadges = useMemo(
-    () => [...history].sort((a, b) => String(b.recordedAt || b.date).localeCompare(String(a.recordedAt || a.date))),
-    [history],
-  )
-  const v2BadgePending = useMemo(
-    () => scheduleSortedForBadges.filter((e) => e.status === 'Success' && !e.scheduleRef).length,
-    [scheduleSortedForBadges],
-  )
-  const v2BadgeGenerated = useMemo(
-    () => scheduleSortedForBadges.filter((e) => !!e.scheduleRef && e.status === 'Success').length,
-    [scheduleSortedForBadges],
-  )
 
   const endorsementDateStatusSortFilters = (
     <>
@@ -423,10 +532,104 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v2' })
     </div>
   )
 
+  const v3SchedulesBadgeCount = useMemo(
+    () => history.filter((e) => e.status === 'Success' && getEndorsementScheduleStatus(e)).length,
+    [history],
+  )
+
+  const endorsementsScheduleChips = (
+    <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Schedule status">
+      {[
+        { id: 'all', label: 'All' },
+        { id: 'pending', label: 'Pending schedules', count: scheduleChipCounts.pending },
+        { id: 'generated', label: 'Generated', count: scheduleChipCounts.generated },
+      ].map((chip) => {
+        const active = scheduleChipFilter === chip.id
+        const label =
+          chip.id !== 'all' && chip.count != null ? `${chip.label} (${chip.count})` : chip.label
+        return (
+          <button
+            key={chip.id}
+            type="button"
+            onClick={() => {
+              setScheduleChipFilter(chip.id)
+              setCurrentPage(1)
+            }}
+            className={`cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+              active
+                ? 'border-indigo-300 bg-indigo-50 text-indigo-900 ring-1 ring-indigo-200'
+                : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            {label}
+          </button>
+        )
+      })}
+    </div>
+  )
+
+  const endorsementsToolbarFilters = (
+    <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+      <div className="relative min-w-[11rem] w-full max-w-[280px] sm:w-auto sm:flex-initial">
+        <Search
+          size={14}
+          className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"
+          aria-hidden
+        />
+        <input
+          type="search"
+          value={historySearchQuery}
+          onChange={(e) => {
+            setHistorySearchQuery(e.target.value)
+            setCurrentPage(1)
+          }}
+          placeholder="Search endorsement no., action, done by…"
+          autoComplete="off"
+          title="Search endorsements"
+          aria-label="Search endorsements"
+          className="min-h-[1.75rem] w-full rounded-lg border border-gray-200 bg-white py-1 pl-8 pr-2.5 text-xs text-gray-900 placeholder:text-gray-400 hover:border-gray-300 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+        />
+      </div>
+      <span className="hidden h-5 w-px shrink-0 bg-gray-200 sm:block" aria-hidden />
+      {endorsementDateStatusSortFilters}
+      {hasFiltersAllEndorsementsTab ? (
+        <button
+          type="button"
+          onClick={clearFilters}
+          className="shrink-0 cursor-pointer whitespace-nowrap text-xs font-medium text-indigo-600 hover:text-indigo-700"
+        >
+          Clear
+        </button>
+      ) : null}
+    </div>
+  )
+
+  const v2StyleToolbar = (
+    <div className="shrink-0 border-b border-gray-100 px-6 py-3">
+      <h2 className="text-[15px] font-medium text-gray-900">Endorsement history</h2>
+      <div className="mt-3 border-t border-gray-100 pt-3">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          {endorsementsScheduleChips}
+          {endorsementsToolbarFilters}
+        </div>
+      </div>
+    </div>
+  )
+
+  const v3EndorsementsToolbar = (
+    <div className="shrink-0 border-b border-gray-100 px-6 py-3">
+      <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-4 gap-y-2">
+        {endorsementsToolbarFilters}
+      </div>
+    </div>
+  )
+
+  const showEndorsementsTable = !isV3 || v3MainTab === 'endorsements'
+
   return (
     <>
       <div className="bg-white rounded-xl border border-gray-200 flex flex-col h-full overflow-hidden">
-        {!isV2 ? (
+        {isV1 ? (
           <div className="px-6 py-3 border-b border-gray-100 flex-shrink-0">
             <div className="flex items-center justify-between gap-4">
               <div className="flex-shrink-0">
@@ -436,7 +639,9 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v2' })
               {historyFiltersRow}
             </div>
           </div>
-        ) : (
+        ) : null}
+        {isV2Like ? v2StyleToolbar : null}
+        {isV3 ? (
           <>
             <div
               className="relative flex shrink-0 flex-wrap gap-8 border-b border-gray-200 px-4 pt-4"
@@ -446,108 +651,52 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v2' })
               <button
                 type="button"
                 role="tab"
-                aria-selected={v2MainTab === 'all'}
-                id="eh-v2-tab-all"
+                aria-selected={v3MainTab === 'endorsements'}
+                id="eh-v3-tab-endorsements"
                 className={`-mb-px inline-flex cursor-pointer items-center border-b-2 pb-2.5 pt-0.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 ${
-                  v2MainTab === 'all'
+                  v3MainTab === 'endorsements'
                     ? 'border-indigo-600 text-indigo-700'
                     : 'border-transparent text-gray-500 hover:border-gray-200 hover:text-gray-800'
                 }`}
-                onClick={() => setV2MainTab('all')}
+                onClick={() => setV3MainTab('endorsements')}
               >
-                All endorsements
-                <V2TabCountBadge n={history.length} active={v2MainTab === 'all'} />
+                Endorsements
               </button>
               <button
                 type="button"
                 role="tab"
-                aria-selected={v2MainTab === 'pending'}
-                id="eh-v2-tab-pending"
+                aria-selected={v3MainTab === 'schedules'}
+                id="eh-v3-tab-schedules"
                 className={`-mb-px inline-flex cursor-pointer items-center border-b-2 pb-2.5 pt-0.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 ${
-                  v2MainTab === 'pending'
+                  v3MainTab === 'schedules'
                     ? 'border-indigo-600 text-indigo-700'
                     : 'border-transparent text-gray-500 hover:border-gray-200 hover:text-gray-800'
                 }`}
-                onClick={() => setV2MainTab('pending')}
+                onClick={() => setV3MainTab('schedules')}
               >
-                Pending schedules
-                <V2TabCountBadge n={v2BadgePending} active={v2MainTab === 'pending'} />
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={v2MainTab === 'generated'}
-                id="eh-v2-tab-generated"
-                className={`-mb-px inline-flex cursor-pointer items-center border-b-2 pb-2.5 pt-0.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 ${
-                  v2MainTab === 'generated'
-                    ? 'border-indigo-600 text-indigo-700'
-                    : 'border-transparent text-gray-500 hover:border-gray-200 hover:text-gray-800'
-                }`}
-                onClick={() => setV2MainTab('generated')}
-              >
-                Generated schedules
-                <V2TabCountBadge n={v2BadgeGenerated} active={v2MainTab === 'generated'} />
+                Endorsement schedules
+                <V3TabCountBadge n={v3SchedulesBadgeCount} active={v3MainTab === 'schedules'} />
               </button>
             </div>
-
-            {v2MainTab === 'all' ? (
-              <div className="shrink-0 border-b border-gray-100 px-6 py-3" role="tabpanel" aria-labelledby="eh-v2-tab-all">
-                <div className="flex min-w-0 items-center gap-3 overflow-x-auto">
-                  <p className="hidden shrink-0 text-xs font-normal leading-snug text-gray-500 md:block md:max-w-[13rem] lg:max-w-sm">
-                    Track all endorsement activities and their status.
-                  </p>
-                  <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
-                    <div className="relative min-w-[11rem] max-w-md flex-[1_0_14rem]">
-                      <Search
-                        size={14}
-                        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"
-                        aria-hidden
-                      />
-                      <input
-                        type="search"
-                        value={historySearchQuery}
-                        onChange={(e) => {
-                          setHistorySearchQuery(e.target.value)
-                          setCurrentPage(1)
-                        }}
-                        placeholder="Search endorsement no., action, done by…"
-                        autoComplete="off"
-                        title="Search endorsements"
-                        aria-label="Search endorsements"
-                        className="min-h-[1.75rem] w-full rounded-lg border border-gray-200 bg-white py-1 pl-8 pr-2.5 text-xs text-gray-900 placeholder:text-gray-400 hover:border-gray-300 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                      />
-                    </div>
-                    <span className="h-6 w-px shrink-0 self-center bg-gray-200" aria-hidden />
-                    {endorsementDateStatusSortFilters}
-                    {hasFiltersAllEndorsementsTab ? (
-                      <button
-                        type="button"
-                        onClick={clearFilters}
-                        className="shrink-0 text-xs text-indigo-600 font-medium hover:text-indigo-700 cursor-pointer whitespace-nowrap"
-                      >
-                        Clear
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            ) : null}
+            {v3MainTab === 'endorsements' ? v3EndorsementsToolbar : null}
           </>
-        )}
+        ) : null}
 
-        {!isV2 || v2MainTab === 'all' ? (
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {showEndorsementsTable ? (
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto [min-height:max(16rem,28dvh)]">
-          <table className="w-full min-w-0 table-fixed border-collapse">
+              <div className="min-h-0 flex-1 overflow-x-auto overflow-y-auto [min-height:max(16rem,28dvh)]">
+          <table className={`w-full border-collapse ${isV3 ? 'min-w-[980px]' : 'min-w-[1100px]'}`}>
             <colgroup>
+              <col className="w-[8%]" />
+              <col className="w-[22%]" />
+              <col className="w-[9%]" />
               <col className="w-[10%]" />
-              <col className="w-[24%]" />
-              <col className="w-[11%]" />
-              <col className="w-[14%]" />
-              <col className="w-[11%]" />
-              <col className="w-[11%]" />
-              <col className="w-[19%]" />
+              <col className="w-[8%]" />
+              <col className="w-[7%]" />
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
+              {!isV3 ? <col className="w-[16%]" /> : null}
             </colgroup>
             <thead className="sticky top-0 z-[1]">
               <tr className={ENDORSEMENT_THEAD_TR_CLASS}>
@@ -569,15 +718,33 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v2' })
                 <EndorsementSortTh columnKey="result" sortKey={historySort.key} sortDir={historySort.dir} onSort={handleHistorySort}>
                   Result
                 </EndorsementSortTh>
-                <th scope="col" className="text-left px-4 py-2.5 text-[10px] font-semibold text-[#495057] uppercase tracking-wider">
+                <th scope="col" className={ENDORSEMENT_TABLE_TH_CLASS}>
                   Actions
                 </th>
+                <EndorsementSortTh
+                  columnKey="scheduleStatus"
+                  sortKey={historySort.key}
+                  sortDir={historySort.dir}
+                  onSort={handleHistorySort}
+                >
+                  Schedule status
+                </EndorsementSortTh>
+                {!isV3 ? (
+                  <EndorsementSortTh
+                    columnKey="scheduleRef"
+                    sortKey={historySort.key}
+                    sortDir={historySort.dir}
+                    onSort={handleHistorySort}
+                  >
+                    Endorsement schedule
+                  </EndorsementSortTh>
+                ) : null}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-14 text-center align-middle">
+                  <td colSpan={isV3 ? 8 : 9} className="px-4 py-14 text-center align-middle">
                     {history.length === 0 ? (
                       <p className="text-sm font-normal text-gray-500">No endorsement activity yet.</p>
                     ) : (
@@ -597,26 +764,26 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v2' })
                   key={row.id}
                   className={`transition-colors ${row.isNew ? 'bg-indigo-50/25' : ''} hover:bg-gray-50/60`}
                 >
-                  <td className="px-4 py-2.5 align-middle">
+                  <td className="px-4 py-2 align-middle">
                     <HistoryTableDateCell row={row} />
                   </td>
-                  <td className="px-4 py-2.5 align-middle min-w-0">
+                  <td className="min-w-0 px-4 py-2 align-middle">
                     <EndorsementActivityCell row={row} />
                   </td>
-                  <td className="px-4 py-2.5 align-middle min-w-0">
+                  <td className="min-w-0 px-3 py-2 align-middle">
                     <EndorsementRunModeCell row={row} />
                   </td>
-                  <td className="px-4 py-2.5 align-middle min-w-0">
+                  <td className="min-w-0 truncate px-3 py-2 align-middle">
                     <EndorsementDoneByCell row={row} />
                   </td>
-                  <td className="px-4 py-2.5 align-middle">
+                  <td className="px-3 py-2 align-middle">
                     <StatusBadge status={row.status} />
                   </td>
-                  <td className="px-4 py-2.5 align-middle">
+                  <td className="px-3 py-2 align-middle">
                     <ResultCountCell row={row} />
                   </td>
-                  <td className="px-4 py-2.5 align-middle">
-                    <div className="flex flex-wrap items-center gap-1.5">
+                  <td className="px-3 py-2 align-middle">
+                    <div className="flex flex-wrap items-center gap-1">
                       {row.status === 'Failed' && (
                         <button
                           type="button"
@@ -624,7 +791,7 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v2' })
                           className={HISTORY_CTA_FIX}
                           title="Fix errors"
                         >
-                          <Wrench size={12} strokeWidth={2} className="shrink-0" aria-hidden />
+                          <Wrench size={11} strokeWidth={2} className="shrink-0" aria-hidden />
                           Fix
                         </button>
                       )}
@@ -634,7 +801,7 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v2' })
                           onClick={() => setViewPanel(row)}
                           className={HISTORY_CTA_VIEW}
                         >
-                          <Eye size={12} className="shrink-0" aria-hidden />
+                          <Eye size={11} className="shrink-0" aria-hidden />
                           View
                         </button>
                       )}
@@ -644,7 +811,7 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v2' })
                           onClick={() => setViewPanel(row)}
                           className={HISTORY_CTA_VIEW}
                         >
-                          <Eye size={12} className="shrink-0" aria-hidden />
+                          <Eye size={11} className="shrink-0" aria-hidden />
                           View
                         </button>
                       )}
@@ -654,21 +821,91 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v2' })
                           onClick={() => setProgressPanel(row)}
                           className={HISTORY_CTA_TRACK}
                         >
-                          <Clock size={12} className="shrink-0" aria-hidden />
+                          <Clock size={11} className="shrink-0" aria-hidden />
                           Track
                         </button>
                       )}
                       <button
                         type="button"
-                        className={HISTORY_DOWNLOAD_ICON_BTN}
+                        className={HISTORY_ROW_ICON_BTN}
                         title="Download row as CSV"
                         aria-label="Download this row as CSV"
                         onClick={() => downloadHistoryRowCsv(row)}
                       >
-                        <Download size={16} strokeWidth={2} className="shrink-0" aria-hidden />
+                        <Download size={12} strokeWidth={2} className="shrink-0" aria-hidden />
                       </button>
                     </div>
                   </td>
+                  <td className="px-3 py-2 align-middle">
+                    <EndorsementScheduleStatusCell row={row} />
+                  </td>
+                  {!isV3 ? (
+                    <td className="px-3 py-2 align-middle">
+                      {row.status === 'Success' ? (() => {
+                        const scheduleStatus = getEndorsementScheduleStatus(row)
+                        if (scheduleStatus === 'pending') {
+                          return (
+                            <button
+                              type="button"
+                              className={ENDORSEMENT_SCHEDULE_GENERATE_BTN}
+                              onClick={() => setSchedulePreviewRow(row)}
+                            >
+                              Generate
+                            </button>
+                          )
+                        }
+                        if (scheduleStatus === 'processing') {
+                          return (
+                            <div className="inline-flex items-center gap-1 text-indigo-600">
+                              <Loader2 size={14} className="animate-spin" aria-hidden />
+                              <span className="text-[11px] font-medium">Generating…</span>
+                            </div>
+                          )
+                        }
+                        if (scheduleStatus === 'generated') {
+                          const viewReady = canViewEndorsementSchedule(row)
+                          const pdfReady = isScheduleDocumentReady(row)
+                          return (
+                            <div className="inline-flex items-center gap-1">
+                              <button
+                                type="button"
+                                disabled={!viewReady}
+                                className={HISTORY_ROW_ICON_BTN}
+                                title={viewReady ? `View schedule ${row.scheduleRef}` : 'View unavailable'}
+                                aria-label={viewReady ? `View schedule ${row.scheduleRef}` : 'View unavailable'}
+                                onClick={() => void openScheduleViewer(row)}
+                              >
+                                <Eye size={12} strokeWidth={2} className="shrink-0" aria-hidden />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!pdfReady}
+                                className={HISTORY_ROW_ICON_BTN}
+                                title={pdfReady ? 'Download Excel details' : 'Available when generation completes'}
+                                aria-label={pdfReady ? 'Download Excel details' : 'Excel download unavailable'}
+                                onClick={() => downloadEndorsementDetailsExcel(row)}
+                              >
+                                <Download size={12} strokeWidth={2} className="shrink-0" aria-hidden />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!pdfReady}
+                                className={HISTORY_ROW_ICON_BTN}
+                                title={pdfReady ? 'Download schedule PDF' : 'Available when generation completes'}
+                                aria-label={pdfReady ? 'Download schedule PDF' : 'PDF download unavailable'}
+                                onClick={() => void downloadSchedulePdfForRow(row)}
+                              >
+                                <FileDown size={12} strokeWidth={2} className="shrink-0" aria-hidden />
+                              </button>
+                            </div>
+                          )
+                        }
+                        return <span className="text-[12px] text-gray-400">—</span>
+                      })() : (
+                        <span className="text-[12px] text-gray-400">—</span>
+                      )}
+                    </td>
+                  ) : null}
                 </tr>
               ))
               )}
@@ -719,22 +956,21 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v2' })
           </div>
             </div>
           </div>
-        ) : (
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <EndorsementHistoryScheduleV2
-              slice={v2MainTab}
-              dateFrom={dateFrom}
-              dateTo={dateTo}
-              onDateFromChange={(v) => {
-                setDateFrom(v)
-              }}
-              onDateToChange={(v) => {
-                setDateTo(v)
-              }}
-              onAfterGenerate={() => setV2MainTab('generated')}
-            />
-          </div>
-        )}
+        ) : null}
+
+        {isV3 && v3MainTab === 'schedules' ? (
+          <EndorsementHistoryScheduleV2
+            hideTitle
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onDateFromChange={(v) => setDateFrom(v)}
+            onDateToChange={(v) => setDateTo(v)}
+            enableRowSelection
+            onGenerateSchedule={(row) => setSchedulePreviewRow(row)}
+            onViewSchedule={(row) => void openScheduleViewer(row)}
+            onDownloadPdf={(row) => void downloadSchedulePdfForRow(row)}
+          />
+        ) : null}
       </div>
 
       {/* Error detail panel – different UX for bulk vs quick */}
@@ -754,6 +990,29 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v2' })
       {viewPanel && (
         <ViewDetailModal entry={viewPanel} onClose={() => setViewPanel(null)} />
       )}
+
+      <SchedulePreviewGenerateModal
+        open={schedulePreviewRow != null}
+        row={schedulePreviewRow}
+        generating={schedulePreviewGenerating}
+        onClose={() => {
+          if (!schedulePreviewGenerating) setSchedulePreviewRow(null)
+        }}
+        onGenerate={() => {
+          if (schedulePreviewRow) runGenerateForRow(schedulePreviewRow, { closePreview: true })
+        }}
+      />
+
+      <ScheduleDocumentViewerModal
+        open={scheduleViewer != null}
+        scheduleRef={scheduleViewer?.scheduleRef ?? ''}
+        pdfUrl={scheduleViewerUrl}
+        loading={scheduleViewerLoading}
+        onClose={closeScheduleViewer}
+        onDownload={() => {
+          if (scheduleViewer) void downloadSchedulePdfForRow(scheduleViewer)
+        }}
+      />
     </>
   )
 }

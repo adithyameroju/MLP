@@ -1,7 +1,9 @@
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import Layout from './components/Layout'
 import { GlobalSearchProvider } from './context/GlobalSearchContext'
+import { HelpFavoritesProvider } from './context/HelpFavoritesContext'
 import { EntityProvider } from './context/EntityContext'
+import { AiChatProvider } from './context/AiChatContext'
 import { EndorsementProvider } from './store/EndorsementStore'
 import EndorsementsDashboard from './pages/EndorsementsDashboard'
 import EndorsementSchedule from './pages/EndorsementSchedule'
@@ -27,6 +29,8 @@ import ClaimsDetail from './pages/ClaimsDetail'
 import SupportFeedback from './pages/SupportFeedback'
 import SupportHelpCenter from './pages/SupportHelpCenter'
 import SupportHelpArticleDetail from './pages/SupportHelpArticleDetail'
+import SupportHelpVideos from './pages/SupportHelpVideos'
+import SupportHelpTopicDetail from './pages/SupportHelpTopicDetail'
 import NewReleases from './pages/NewReleases'
 
 function MainLayout() {
@@ -40,7 +44,9 @@ function MainLayout() {
 export default function App() {
   return (
     <GlobalSearchProvider>
+      <HelpFavoritesProvider>
       <EntityProvider>
+      <AiChatProvider>
       <EndorsementProvider>
       <Routes>
         <Route element={<MainLayout />}>
@@ -103,6 +109,8 @@ export default function App() {
           <Route path="/hrms-sync" element={<HRMSSync />} />
           <Route path="/support/feedback" element={<SupportFeedback />} />
           <Route path="/support/help/articles/:articleId" element={<SupportHelpArticleDetail />} />
+          <Route path="/support/help/videos" element={<SupportHelpVideos />} />
+          <Route path="/support/help/topics/:topicId" element={<SupportHelpTopicDetail />} />
           <Route path="/support/help" element={<SupportHelpCenter />} />
           <Route path="/new-releases" element={<NewReleases />} />
           <Route path="/whats-new" element={<Navigate to="/new-releases" replace />} />
@@ -110,7 +118,9 @@ export default function App() {
         </Route>
       </Routes>
       </EndorsementProvider>
+      </AiChatProvider>
       </EntityProvider>
+      </HelpFavoritesProvider>
     </GlobalSearchProvider>
   )
 }

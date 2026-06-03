@@ -1,114 +1,167 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowRight, PlayCircle } from 'lucide-react'
+import { ChevronDown, Search, X } from 'lucide-react'
 import PageHeader from '../components/PageHeader'
-import { useGlobalSearch } from '../context/GlobalSearchContext'
-import { matchesNewReleasesQuery, newReleasesTutorials } from '../data/newReleasesMock'
-
-function RichSteps({ lines }) {
-  return (
-    <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-gray-600">
-      {lines.map((line, idx) => (
-        <li key={idx} className="leading-relaxed">
-          {line.split('**').map((chunk, i) =>
-            i % 2 === 1 ? (
-              <strong key={`${line}-${i}`} className="font-semibold text-gray-800">
-                {chunk}
-              </strong>
-            ) : (
-              <span key={`${line}-${i}`}>{chunk}</span>
-            ),
-          )}
-        </li>
-      ))}
-    </ol>
-  )
-}
+import { helpLink, helpSearchInput, helpSectionSubtitle, helpSectionTitle } from '../lib/helpUiTokens'
+import { ReleaseCard } from '../components/releases/ReleaseCard'
+import {
+  getCurrentReleases,
+  getPastReleaseGroups,
+  matchesNewReleasesQuery,
+  releaseSearchText,
+} from '../data/newReleasesMock'
 
 export default function NewReleases() {
   const navigate = useNavigate()
-  const { query } = useGlobalSearch()
+  const [releaseQuery, setReleaseQuery] = useState('')
+  const [openPast, setOpenPast] = useState({})
 
-  const filtered = useMemo(
-    () =>
-      newReleasesTutorials.filter((t) =>
-        matchesNewReleasesQuery([t.title, t.summary, t.area, ...t.steps].join(' '), query),
-      ),
-    [query],
-  )
+  const hasQuery = releaseQuery.trim().length > 0
+
+  const filterFn = (t) => matchesNewReleasesQuery(releaseSearchText(t), releaseQuery)
+
+  const current = useMemo(() => getCurrentReleases().filter(filterFn), [releaseQuery])
+  const pastGroups = useMemo(() => {
+    const groups = getPastReleaseGroups()
+    return groups
+      .map((g) => ({ ...g, items: g.items.filter(filterFn) }))
+      .filter((g) => g.items.length > 0)
+  }, [releaseQuery])
+
+  const totalMatches = current.length + pastGroups.reduce((n, g) => n + g.items.length, 0)
+  const hasAny = totalMatches > 0
+
+  const togglePast = (label) => {
+    setOpenPast((prev) => ({ ...prev, [label]: !prev[label] }))
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-gray-50 px-6 py-6 lg:px-8">
       <PageHeader
         title="New releases"
-        subtitle="Tutorials for what shipped recently—so your team can adopt features without guessing."
+        subtitle="Latest shipments first—browse previous releases for earlier updates."
         breadcrumbs={[]}
       />
 
-      <p className="mt-1 text-sm text-gray-500">
-        The header search filters the tutorials below. Each card ends with steps and a{' '}
-        <span className="font-medium text-gray-700">Try it</span> jump into the demo screens where relevant.
-      </p>
+      <section className="mt-6 w-full min-w-0" aria-labelledby="releases-search-heading">
+        <label htmlFor="releases-page-search" className="sr-only">
+          Search releases
+        </label>
+        <div className="relative max-w-2xl">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+            aria-hidden
+          />
+          <input
+            id="releases-page-search"
+            type="search"
+            role="searchbox"
+            inputMode="search"
+            enterKeyHint="search"
+            value={releaseQuery}
+            onChange={(e) => setReleaseQuery(e.target.value)}
+            placeholder="Search by feature, version, or topic…"
+            autoComplete="off"
+            className={helpSearchInput}
+          />
+          {hasQuery ? (
+            <button
+              type="button"
+              onClick={() => setReleaseQuery('')}
+              className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 cursor-pointer items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
+              aria-label="Clear search"
+            >
+              <X size={16} aria-hidden />
+            </button>
+          ) : null}
+        </div>
+        {hasQuery ? (
+          <p id="releases-search-heading" className="mt-2 text-xs text-gray-500">
+            {totalMatches} release{totalMatches === 1 ? '' : 's'} match “{releaseQuery.trim()}”
+          </p>
+        ) : null}
+      </section>
 
-      <div className="mt-6 w-full min-w-0 space-y-4">
-        {filtered.length === 0 ? (
+      <div className="mt-6 w-full min-w-0 space-y-8">
+        {!hasAny ? (
           <div className="rounded-xl border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500 shadow-sm">
-            Nothing matches “{query.trim()}”. Clear the header search or try another keyword.
+            Nothing matches “{releaseQuery.trim()}”.{' '}
+            <button
+              type="button"
+              onClick={() => setReleaseQuery('')}
+              className={`${helpLink} font-semibold`}
+            >
+              Clear search
+            </button>{' '}
+            or try another keyword.
           </div>
         ) : (
-          filtered.map((t) => (
-            <article
-              key={t.id}
-              className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md"
-            >
-              <div className="flex flex-col gap-2 border-b border-gray-100 bg-gray-50/80 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-700">
-                      {t.area}
-                    </span>
-                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
-                      <PlayCircle size={14} aria-hidden /> Walkthrough
-                    </span>
-                  </div>
-                  <h2 className="mt-2 text-lg font-bold text-gray-900">{t.title}</h2>
-                  <p className="mt-1 text-sm text-gray-600">{t.summary}</p>
+          <>
+            {current.length > 0 ? (
+              <section aria-labelledby="releases-current-heading">
+                <h2 id="releases-current-heading" className={helpSectionTitle}>
+                  Latest releases
+                </h2>
+                <p className={helpSectionSubtitle}>
+                  {current.length} current release{current.length === 1 ? '' : 's'} in this cycle.
+                </p>
+                <div className="mt-4 space-y-4">
+                  {current.map((t) => (
+                    <ReleaseCard key={t.id} item={t} navigate={navigate} prominent />
+                  ))}
                 </div>
-                <div className="flex shrink-0 flex-col gap-2 sm:items-end">
-                  <button
-                    type="button"
-                    onClick={() => navigate(t.tryItPath)}
-                    className="inline-flex cursor-pointer items-center justify-center gap-1 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30"
-                  >
-                    {t.tryItLabel}
-                    <ArrowRight size={14} aria-hidden />
-                  </button>
-                  {t.altTryItPath ? (
-                    <button
-                      type="button"
-                      onClick={() => navigate(t.altTryItPath)}
-                      className="cursor-pointer text-xs font-semibold text-indigo-600 hover:underline"
-                    >
-                      {t.altTryItLabel}
-                    </button>
-                  ) : null}
+              </section>
+            ) : null}
+
+            {pastGroups.length > 0 ? (
+              <section aria-labelledby="releases-past-heading" className="border-t border-gray-200 pt-8">
+                <h2 id="releases-past-heading" className={helpSectionTitle}>
+                  Previous releases
+                </h2>
+                <div className="mt-4 space-y-2">
+                  {pastGroups.map(({ label, items }) => {
+                    const open = openPast[label] ?? false
+                    return (
+                      <div key={label} className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                        <button
+                          type="button"
+                          onClick={() => togglePast(label)}
+                          className="flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3.5 text-left hover:bg-gray-50"
+                          aria-expanded={open}
+                        >
+                          <span className="text-sm font-semibold text-gray-900">{label}</span>
+                          <span className="flex items-center gap-2 text-xs text-gray-500">
+                            {items.length} release{items.length === 1 ? '' : 's'}
+                            <ChevronDown
+                              size={16}
+                              className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+                              aria-hidden
+                            />
+                          </span>
+                        </button>
+                        {open ? (
+                          <div className="space-y-3 border-t border-gray-100 bg-gray-50/40 p-4">
+                            {items.map((t) => (
+                              <ReleaseCard key={t.id} item={t} navigate={navigate} />
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
                 </div>
-              </div>
-              <div className="px-4 py-4">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Steps</p>
-                <RichSteps lines={t.steps} />
-              </div>
-            </article>
-          ))
+              </section>
+            ) : null}
+          </>
         )}
       </div>
 
       <p className="mt-8 text-xs text-gray-400">
-        Demo content for this prototype. Production dates and rollout windows come from your account team—or open{' '}
+        Demo content for this prototype. Production dates come from your account team—or open{' '}
         <button
           type="button"
           onClick={() => navigate('/support/help')}
-          className="font-medium text-indigo-600 hover:underline"
+          className={`${helpLink} font-medium`}
         >
           Help center
         </button>{' '}

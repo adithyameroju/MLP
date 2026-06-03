@@ -78,14 +78,19 @@ function modificationSecondaryLine(row, cat) {
 }
 
 /** Plain-text category; modification rows get an optional secondary hint line. */
-export function EndorsementActivityCell({ row }) {
+export function EndorsementActivityCell({ row, singleLineSubtext = false }) {
   const cat = row.actionCategory ?? deriveActionCategory(row.action)
   const secondary = modificationSecondaryLine(row, cat)
   return (
     <div className="min-w-0">
       <p className="text-[12px] font-normal leading-snug text-gray-900">{cat}</p>
       {secondary ? (
-        <p className="mt-0.5 text-[10px] font-normal leading-snug text-gray-500" title={secondary}>
+        <p
+          className={`mt-0.5 text-[10px] font-normal text-gray-500 ${
+            singleLineSubtext ? 'truncate leading-tight' : 'leading-snug'
+          }`}
+          title={secondary}
+        >
           {secondary}
         </p>
       ) : null}

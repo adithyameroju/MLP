@@ -1,4 +1,4 @@
-import { CheckCircle2, Download, FileDown, Loader2 } from 'lucide-react'
+import { CheckCircle2, Clock, Download, FileDown, Loader2 } from 'lucide-react'
 import {
   historyRowResultCsvSummary,
   formatDoneBySummary,
@@ -18,6 +18,9 @@ export const TYPE_OPTIONS = [
 
 export const HISTORY_DOWNLOAD_ICON_BTN =
   'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-0 shadow-none bg-[#f3f4f6] text-[#4b5563] hover:bg-gray-200 hover:text-gray-800 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400/40 focus-visible:ring-offset-1'
+
+/** Compact icon-only control for schedule view/download in history tables (h-7, matches row CTAs). */
+export const HISTORY_SCHEDULE_ICON_BTN = `${HISTORY_DOWNLOAD_ICON_BTN.replace('h-8 w-8', 'h-7 w-7').replace('rounded-lg', 'rounded-md')} disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[#f3f4f6] disabled:hover:text-[#4b5563]`
 
 export const SCHEDULE_FILE_ICON_BTN = `${HISTORY_DOWNLOAD_ICON_BTN} disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[#f3f4f6] disabled:hover:text-[#4b5563]`
 
@@ -257,7 +260,11 @@ export function compareScheduleRowsGenerated(a, b, sortKey, sortDir) {
     case 'amount':
       return m * (entryCdImpactInr(a) - entryCdImpactInr(b))
     case 'status':
-      return m * String(a.schedulePdfStatus || '').localeCompare(String(b.schedulePdfStatus || ''))
+    case 'scheduleStatus':
+      return m * (scheduleStatusSortRank(a) - scheduleStatusSortRank(b))
+    case 'recordedAt':
+    case 'date':
+      return m * scheduleRowRecordedSortKey(a).localeCompare(scheduleRowRecordedSortKey(b))
     default:
       return 0
   }
@@ -270,6 +277,81 @@ export function isScheduleDocumentReady(row) {
   if (!row.scheduleRef || row.status !== 'Success') return false
   if (row.schedulePdfStatus === 'generating') return false
   return row.schedulePdfStatus === 'ready' || row.schedulePdfStatus == null
+}
+
+/** @returns {'pending' | 'processing' | 'generated' | null} */
+export function getEndorsementScheduleStatus(row) {
+  if (row.status !== 'Success') return null
+  if (row.schedulePdfStatus === 'generating') return 'processing'
+  if (row.scheduleRef && isScheduleDocumentReady(row)) return 'generated'
+  if (!row.scheduleRef) return 'pending'
+  return 'processing'
+}
+
+export function canViewEndorsementSchedule(row) {
+  return row.status === 'Success' && !!row.scheduleRef && row.schedulePdfStatus !== 'generating'
+}
+
+export function scheduleStatusSortRank(row) {
+  const s = getEndorsementScheduleStatus(row)
+  if (s === 'pending') return 0
+  if (s === 'processing') return 1
+  if (s === 'generated') return 2
+  return -1
+}
+
+export function generateScheduleForRows(ids, updateEntry, timersRef) {
+  if (ids.length === 0) return
+  const refs = createBatchScheduleRefs(ids.length)
+  const ts = new Date().toISOString()
+  ids.forEach((id, i) => {
+    updateEntry(id, {
+      scheduleRef: refs[i],
+      scheduleGeneratedAt: ts,
+      schedulePdfStatus: 'generating',
+      schedulePdfProgress: 0,
+    })
+  })
+  runSchedulePdfProgressDemo(ids, updateEntry, timersRef)
+  return refs
+}
+
+export function EndorsementScheduleStatusCell({ row }) {
+  const scheduleStatus = getEndorsementScheduleStatus(row)
+  const pillBase = 'inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium capitalize'
+
+  if (!scheduleStatus) {
+    return <span className="text-[12px] text-gray-400">—</span>
+  }
+  if (scheduleStatus === 'pending') {
+    return (
+      <span className={`${pillBase} bg-amber-50 text-amber-800`}>
+        <Clock size={12} className="shrink-0" aria-hidden />
+        Pending
+      </span>
+    )
+  }
+  if (scheduleStatus === 'processing') {
+    const pct =
+      typeof row.schedulePdfProgress === 'number'
+        ? row.schedulePdfProgress
+        : row.schedulePdfStatus === 'generating'
+          ? 0
+          : undefined
+    return (
+      <span className={`${pillBase} bg-indigo-50 text-indigo-700`} role="status">
+        <Loader2 size={12} className="shrink-0 animate-spin text-indigo-600" aria-hidden />
+        Processing
+        {typeof pct === 'number' ? <span className="tabular-nums text-indigo-600/90">{pct}%</span> : null}
+      </span>
+    )
+  }
+  return (
+    <span className={`${pillBase} bg-emerald-50 text-emerald-700`}>
+      <CheckCircle2 size={12} className="shrink-0" aria-hidden />
+      Generated
+    </span>
+  )
 }
 
 export function ScheduleDocumentStatusCell({ row }) {

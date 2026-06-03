@@ -38,7 +38,7 @@ const actions = [
 
 export default function EndorsementsDashboard() {
   const navigate = useNavigate()
-  const [scheduleExperienceVersion, setScheduleExperienceVersion] = useState('v2')
+  const [scheduleExperienceVersion, setScheduleExperienceVersion] = useState('v3')
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden px-6 py-3 lg:px-8">
@@ -62,6 +62,8 @@ export default function EndorsementsDashboard() {
           >
             <option value="v1">V1</option>
             <option value="v2">V2</option>
+            <option value="v3">V3</option>
+            <option value="v4">V4</option>
           </select>
           {scheduleExperienceVersion === 'v1' ? (
             <button

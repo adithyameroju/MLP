@@ -180,7 +180,7 @@ export default function CdBalance() {
       `CD balance (demo): ${formatInr(CD_CURRENT_BALANCE_RUPEES)}`,
       `As of: ${formatAsOf(CD_BALANCE_AS_OF_ISO)}`,
       `Source: ${CD_BALANCE_SOURCE_LABEL}`,
-      `Est. monthly burn: ${formatInr(CD_MONTHLY_BURN_RUPEES)}`,
+      `Average consumption: ${formatInr(CD_MONTHLY_BURN_RUPEES)}`,
       runwayWks != null && runwayMos != null
         ? `Runway (est.): ~${runwayWks} wks · ~${runwayMos} mos`
         : '',
@@ -342,7 +342,7 @@ export default function CdBalance() {
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Consumption (est.)</p>
                 <div className="flex items-baseline justify-between gap-3 border-b border-gray-100 pb-3">
-                  <span className="text-sm text-gray-600">Est. monthly burn</span>
+                  <span className="text-sm text-gray-600">Average consumption</span>
                   <span className="text-2xl font-bold text-gray-900 tabular-nums">{formatInr(CD_MONTHLY_BURN_RUPEES)}</span>
                 </div>
                 <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-gray-400">{CD_PREMIUM_SPLIT.periodLabel}</p>

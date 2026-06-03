@@ -52,6 +52,18 @@ body {
   animation: cd-panel-glow 0.7s ease-out;
 }
 
+/** Help center hero — iOS-style continuous corners (squircle) where supported */
+.help-hero-shell {
+  border-radius: 1rem;
+}
+
+@supports (corner-shape: squircle) {
+  .help-hero-shell {
+    border-radius: 1.375rem;
+    corner-shape: squircle;
+  }
+}
+
 /* Claims KPI donut — ring grows from center on mount */
 @keyframes metric-donut-ring-enter {
   0% {
@@ -196,4 +208,54 @@ input[type="date"][value]:not([value=""]) {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
+}
+
+/* Floating chat FAB — glowing ring on hover */
+.chat-fab-glow {
+  position: relative;
+}
+
+.chat-fab-glow::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  transition: border-color 0.35s ease, box-shadow 0.35s ease, opacity 0.35s ease;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chat-fab-glow:hover::before {
+  border-color: rgb(129 140 248 / 0.85);
+  box-shadow:
+    0 0 0 4px rgb(99 102 241 / 0.2),
+    0 0 22px rgb(99 102 241 / 0.45);
+  opacity: 1;
+}
+
+/* Chat typing indicator dots */
+@keyframes chat-typing-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+.chat-typing-dot {
+  animation: chat-typing-bounce 1.2s ease-in-out infinite;
+}
+
+.chat-typing-dot-delay-1 {
+  animation-delay: 0.15s;
+}
+
+.chat-typing-dot-delay-2 {
+  animation-delay: 0.3s;
 }

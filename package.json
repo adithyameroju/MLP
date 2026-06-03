@@ -12,10 +12,14 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "preview:ip": "vite preview --host 127.0.0.1"
+    "preview:ip": "vite preview --host 127.0.0.1",
+    "record:help-videos": "node scripts/record-help-videos.mjs",
+    "generate:help-thumbnails": "node scripts/generate-help-thumbnails.mjs",
+    "build:help-narration": "node scripts/build-help-video-narration.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.577.0",
+    "pdf-lib": "^1.17.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.1"
@@ -30,6 +34,8 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "pdfjs-dist": "^6.0.227",
+    "playwright": "^1.52.0",
     "tailwindcss": "^4.2.1",
     "typescript": "^6.0.3",
     "vite": "^7.3.1",
