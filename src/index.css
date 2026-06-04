@@ -38,6 +38,40 @@ body {
   animation: cd-value-pulse 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+@keyframes generate-schedule-shimmer {
+  0% {
+    transform: translateX(-120%) skewX(-12deg);
+  }
+  100% {
+    transform: translateX(220%) skewX(-12deg);
+  }
+}
+
+.generate-schedule-shimmer {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.generate-schedule-shimmer::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 45%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+  transform: translateX(-120%) skewX(-12deg);
+  animation: generate-schedule-shimmer 2.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .generate-schedule-shimmer::after {
+    animation: none;
+    opacity: 0;
+  }
+}
+
 @keyframes cd-panel-glow {
   0%,
   100% {

@@ -45,6 +45,20 @@ const LIFECYCLE_FILTERS = [
   { id: 'rejected', label: 'Rejected' },
 ]
 
+const REPORT_STATUS_FILTERS = [
+  { id: 'All', label: 'All' },
+  { id: 'completed', label: 'Completed' },
+  { id: 'processing', label: 'Processing' },
+  { id: 'failed', label: 'Failed' },
+]
+
+const FILTER_CHIP_CLASS = (active) =>
+  `cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+    active
+      ? 'border-indigo-300 bg-indigo-50 text-indigo-900 ring-1 ring-indigo-200'
+      : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+  }`
+
 const CLAIM_VIEW_CTA =
   'inline-flex h-8 min-w-[4.75rem] shrink-0 items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-medium border-0 shadow-none transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 bg-[#f0f2ff] text-[#4c46d9] hover:bg-[#e6eaff] focus-visible:ring-[#4c46d9]/35'
 
@@ -306,6 +320,10 @@ export default function Claims() {
   const [reportModalOpen, setReportModalOpen] = useState(false)
   const [reportDateFrom, setReportDateFrom] = useState('')
   const [reportDateTo, setReportDateTo] = useState('')
+  const [reportQuery, setReportQuery] = useState('')
+  const [reportStatusFilter, setReportStatusFilter] = useState('All')
+  const [reportListDateFrom, setReportListDateFrom] = useState('')
+  const [reportListDateTo, setReportListDateTo] = useState('')
   const [mainTab, setMainTab] = useState('history')
 
   useEffect(() => {
@@ -364,9 +382,23 @@ export default function Claims() {
     setCurrentPage((p) => Math.min(Math.max(1, p), totalPages))
   }, [totalPages])
 
-  const reportTotalPages = Math.max(1, Math.ceil(claimsReportRows.length / REPORTS_PER_PAGE))
+  const filteredReportRows = useMemo(() => {
+    let list = [...claimsReportRows]
+    list = list.filter((r) => rowInDateRange(r.requestedAt, reportListDateFrom, reportListDateTo))
+    if (reportStatusFilter !== 'All') {
+      list = list.filter((r) => r.status === reportStatusFilter)
+    }
+    const q = reportQuery.trim().toLowerCase()
+    if (q) {
+      list = list.filter((r) => r.name.toLowerCase().includes(q))
+    }
+    list.sort((a, b) => b.requestedAt.localeCompare(a.requestedAt))
+    return list
+  }, [reportListDateFrom, reportListDateTo, reportStatusFilter, reportQuery])
+
+  const reportTotalPages = Math.max(1, Math.ceil(filteredReportRows.length / REPORTS_PER_PAGE))
   const safeReportPage = Math.min(reportPage, reportTotalPages)
-  const paginatedReportRows = claimsReportRows.slice(
+  const paginatedReportRows = filteredReportRows.slice(
     (safeReportPage - 1) * REPORTS_PER_PAGE,
     safeReportPage * REPORTS_PER_PAGE,
   )
@@ -374,6 +406,23 @@ export default function Claims() {
   useEffect(() => {
     setReportPage((p) => Math.min(Math.max(1, p), reportTotalPages))
   }, [reportTotalPages])
+
+  const hasReportFilters =
+    reportStatusFilter !== 'All' || !!reportListDateFrom || !!reportListDateTo || !!reportQuery.trim()
+
+  function clearReportFilters() {
+    setReportQuery('')
+    setReportStatusFilter('All')
+    setReportListDateFrom('')
+    setReportListDateTo('')
+    setReportPage(1)
+  }
+
+  function applyReportListDateRange(from, to) {
+    setReportListDateFrom(from)
+    setReportListDateTo(to)
+    setReportPage(1)
+  }
 
   function setBucket(next) {
     const nextParams = new URLSearchParams(searchParams)
@@ -469,7 +518,7 @@ export default function Claims() {
       )}
 
       {/* Overview — compact KPI row + donuts only */}
-      <section className="mt-1 mb-3 shrink-0" aria-labelledby="claims-overview-heading">
+      <section className="relative z-10 mt-1 mb-3 shrink-0 overflow-visible" aria-labelledby="claims-overview-heading">
         <h2 id="claims-overview-heading" className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
           Overview
         </h2>
@@ -638,121 +687,112 @@ export default function Claims() {
         {mainTab === 'history' ? (
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <div className="shrink-0 border-b border-gray-100 px-6 py-3" role="tabpanel" aria-labelledby="claims-tab-history">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="min-w-0 shrink-0">
-                  <h2 className="text-[15px] font-medium text-gray-900">Claims history</h2>
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Claim lifecycle">
+                  {LIFECYCLE_FILTERS.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => {
+                        setLifecycleFilter(f.id)
+                        setCurrentPage(1)
+                      }}
+                      className={FILTER_CHIP_CLASS(lifecycleFilter === f.id)}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
                 </div>
-                <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
-                  <div className="relative min-w-[11rem] w-full max-w-[280px] sm:w-auto sm:flex-initial">
-                    <Search
-                      size={14}
-                      className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"
-                      aria-hidden
-                    />
-                    <input
-                      type="search"
-                      value={query}
-                      onChange={(e) => {
-                        setQuery(e.target.value)
-                        setCurrentPage(1)
-                      }}
-                      placeholder="Search name, ID, email, claim ID…"
-                      autoComplete="off"
-                      title="Search claims"
-                      aria-label="Search claims"
-                      className="min-h-[1.75rem] w-full rounded-lg border border-gray-200 bg-white py-1 pl-8 pr-2.5 text-xs text-gray-900 placeholder:text-gray-400 hover:border-gray-300 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                    />
-                  </div>
-                  <div className="flex flex-wrap items-center justify-end gap-2">
-                    <ClaimsDateRangeControl
-                      compact
-                      dateFrom={dateFrom}
-                      dateTo={dateTo}
-                      onApply={applyDateRange}
-                    />
-
-                    <div className="hidden h-5 w-px shrink-0 bg-gray-200 sm:block" aria-hidden />
-
-                    <select
-                      value={categoryFilter}
-                      onChange={(e) => {
-                        setCategoryFilter(e.target.value)
-                        setCurrentPage(1)
-                      }}
-                      className="cursor-pointer rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-900 hover:border-gray-300"
-                      aria-label="Filter by claim category"
-                    >
-                      <option value="All">All categories</option>
-                      {CLAIM_SERVICE_CATEGORIES.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-
-                    <select
-                      value={type}
-                      onChange={(e) => {
-                        setType(e.target.value)
-                        setCurrentPage(1)
-                      }}
-                      className="cursor-pointer rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-900 hover:border-gray-300"
-                      aria-label="Filter by claim type"
-                    >
-                      <option value="All">All types</option>
-                      {CLAIM_TYPES.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
-
-                    <select
-                      value={sortId}
-                      onChange={(e) => {
-                        setSortId(e.target.value)
-                        setCurrentPage(1)
-                      }}
-                      className="min-w-[8.5rem] cursor-pointer rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-900 hover:border-gray-300"
-                      aria-label="Sort claims"
-                    >
-                      {SORT_OPTIONS.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-
-                    {hasFilters ? (
-                      <button
-                        type="button"
-                        onClick={clearFilters}
-                        className="cursor-pointer whitespace-nowrap text-xs font-medium text-indigo-600 hover:text-indigo-700"
-                      >
-                        Clear
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-50 pt-3" role="group" aria-label="Claim lifecycle">
-                {LIFECYCLE_FILTERS.map((f) => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={() => {
-                      setLifecycleFilter(f.id)
+                <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+                <div className="relative min-w-[11rem] w-full max-w-[296px] sm:w-auto sm:flex-initial">
+                  <Search
+                    size={14}
+                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"
+                    aria-hidden
+                  />
+                  <input
+                    type="search"
+                    value={query}
+                    onChange={(e) => {
+                      setQuery(e.target.value)
                       setCurrentPage(1)
                     }}
-                    className={`cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
-                      lifecycleFilter === f.id
-                        ? 'border-indigo-300 bg-indigo-50 text-indigo-900 ring-1 ring-indigo-200'
-                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
-                    }`}
+                    placeholder="Search name, ID, email, claim ID…"
+                    autoComplete="off"
+                    title="Search claims"
+                    aria-label="Search claims"
+                    className="min-h-[1.75rem] w-full rounded-lg border border-gray-200 bg-white py-1 pl-8 pr-2.5 text-xs text-gray-900 placeholder:text-gray-400 hover:border-gray-300 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                </div>
+                <ClaimsDateRangeControl
+                  compact
+                  dateFrom={dateFrom}
+                  dateTo={dateTo}
+                  onApply={applyDateRange}
+                />
+
+                <div className="hidden h-5 w-px shrink-0 bg-gray-200 sm:block" aria-hidden />
+
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => {
+                    setCategoryFilter(e.target.value)
+                    setCurrentPage(1)
+                  }}
+                  className="cursor-pointer rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-900 hover:border-gray-300"
+                  aria-label="Filter by claim category"
+                >
+                  <option value="All">All categories</option>
+                  {CLAIM_SERVICE_CATEGORIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={type}
+                  onChange={(e) => {
+                    setType(e.target.value)
+                    setCurrentPage(1)
+                  }}
+                  className="cursor-pointer rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-900 hover:border-gray-300"
+                  aria-label="Filter by claim type"
+                >
+                  <option value="All">All types</option>
+                  {CLAIM_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={sortId}
+                  onChange={(e) => {
+                    setSortId(e.target.value)
+                    setCurrentPage(1)
+                  }}
+                  className="min-w-[8.5rem] cursor-pointer rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-900 hover:border-gray-300"
+                  aria-label="Sort claims"
+                >
+                  {SORT_OPTIONS.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+
+                {hasFilters ? (
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="cursor-pointer whitespace-nowrap text-xs font-medium text-indigo-600 hover:text-indigo-700"
                   >
-                    {f.label}
+                    Clear
                   </button>
-                ))}
+                ) : null}
+                </div>
               </div>
             </div>
 
@@ -917,29 +957,60 @@ export default function Claims() {
         ) : (
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <div className="shrink-0 border-b border-gray-100 px-6 py-3" role="tabpanel" aria-labelledby="claims-tab-reports">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="min-w-0 shrink-0">
-                  <h2 className="text-[15px] font-medium text-gray-900">Reports</h2>
-                  <p className="mt-0.5 text-[11px] font-normal text-gray-400">
-                    Generate downloads and track processing status (demo).
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-[11px] font-semibold text-gray-700">
-                      Cashless + reimbursement
-                    </span>
-                    <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-[11px] font-semibold tabular-nums text-gray-600">
-                      Preview table · CS {overview.datasetShares.cashlessCount} · RB {overview.datasetShares.reimbursementCount}
-                    </span>
-                  </div>
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Report status">
+                  {REPORT_STATUS_FILTERS.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => {
+                        setReportStatusFilter(f.id)
+                        setReportPage(1)
+                      }}
+                      className={FILTER_CHIP_CLASS(reportStatusFilter === f.id)}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setReportModalOpen(true)}
-                  className="inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-600/20 hover:bg-indigo-700"
-                >
-                  <Plus size={18} aria-hidden />
-                  Generate report
-                </button>
+                <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+                <div className="relative min-w-[11rem] w-full max-w-[296px] sm:w-auto sm:flex-initial">
+                  <Search
+                    size={14}
+                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"
+                    aria-hidden
+                  />
+                  <input
+                    type="search"
+                    value={reportQuery}
+                    onChange={(e) => {
+                      setReportQuery(e.target.value)
+                      setReportPage(1)
+                    }}
+                    placeholder="Search report name…"
+                    autoComplete="off"
+                    title="Search reports"
+                    aria-label="Search reports"
+                    className="min-h-[1.75rem] w-full rounded-lg border border-gray-200 bg-white py-1 pl-8 pr-2.5 text-xs text-gray-900 placeholder:text-gray-400 hover:border-gray-300 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                </div>
+                <ClaimsDateRangeControl
+                  compact
+                  dateFrom={reportListDateFrom}
+                  dateTo={reportListDateTo}
+                  onApply={applyReportListDateRange}
+                />
+                <div className="hidden h-5 w-px shrink-0 bg-gray-200 sm:block" aria-hidden />
+                {hasReportFilters ? (
+                  <button
+                    type="button"
+                    onClick={clearReportFilters}
+                    className="cursor-pointer whitespace-nowrap text-xs font-medium text-indigo-600 hover:text-indigo-700"
+                  >
+                    Clear
+                  </button>
+                ) : null}
+                </div>
               </div>
             </div>
 
@@ -968,7 +1039,14 @@ export default function Claims() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {paginatedReportRows.map((r) => (
+                  {paginatedReportRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-14 text-center align-middle">
+                        <p className="text-sm text-gray-500">No reports match your filters.</p>
+                      </td>
+                    </tr>
+                  ) : (
+                  paginatedReportRows.map((r) => (
                     <tr key={r.id} className="transition-colors hover:bg-gray-50/60">
                       <td className="min-w-0 px-4 py-2.5 align-middle">
                         <span className="line-clamp-2 text-[12px] font-semibold text-gray-900" title={r.name}>
@@ -1010,22 +1088,23 @@ export default function Claims() {
                         )}
                       </td>
                     </tr>
-                  ))}
+                  ))
+                  )}
                 </tbody>
               </table>
             </div>
 
             <div className="flex shrink-0 items-center justify-between border-t border-gray-100 px-6 py-3">
               <p className="text-xs font-normal text-gray-400">
-                {claimsReportRows.length > 0
-                  ? `Showing ${(safeReportPage - 1) * REPORTS_PER_PAGE + 1}–${Math.min(safeReportPage * REPORTS_PER_PAGE, claimsReportRows.length)} of ${claimsReportRows.length}`
+                {filteredReportRows.length > 0
+                  ? `Showing ${(safeReportPage - 1) * REPORTS_PER_PAGE + 1}–${Math.min(safeReportPage * REPORTS_PER_PAGE, filteredReportRows.length)} of ${filteredReportRows.length}`
                   : 'No results'}
               </p>
               <div className="flex items-center gap-1" role="navigation" aria-label="Reports pagination">
                 <button
                   type="button"
                   onClick={() => setReportPage((p) => Math.max(1, p - 1))}
-                  disabled={safeReportPage === 1 || claimsReportRows.length === 0}
+                  disabled={safeReportPage === 1 || filteredReportRows.length === 0}
                   aria-label="Previous page"
                   className="cursor-pointer rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-1"
                 >
@@ -1048,7 +1127,7 @@ export default function Claims() {
                 <button
                   type="button"
                   onClick={() => setReportPage((p) => Math.min(reportTotalPages, p + 1))}
-                  disabled={safeReportPage === reportTotalPages || claimsReportRows.length === 0}
+                  disabled={safeReportPage === reportTotalPages || filteredReportRows.length === 0}
                   aria-label="Next page"
                   className="cursor-pointer rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-1"
                 >

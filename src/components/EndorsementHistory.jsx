@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { Eye, Download, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Clock, X, Loader2, FileText, Check, Heart, Shield, ChevronDown, ChevronUp, Plus, Trash2, Upload, CheckCircle, Wallet, Wrench, Search, FileDown } from 'lucide-react'
+import { Eye, Download, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Clock, X, Loader2, FileText, Check, Heart, Shield, ChevronDown, ChevronUp, Plus, Trash2, Upload, CheckCircle, Wallet, Wrench, Search, FileDown, Info } from 'lucide-react'
 import { useEndorsements } from '../store/EndorsementStore'
 import { basePlans, gpaBasePlans, dependentRelations } from '../data/mockData'
 import {
@@ -18,6 +18,7 @@ import { formatInrSigned } from '../lib/currencyFormat'
 import PlanSelection from './PlanSelection'
 import DependentForm from './DependentForm'
 import EndorsementHistoryScheduleV2 from './EndorsementHistoryScheduleV2'
+import EndorsementScheduleActionsMenu from './EndorsementScheduleActionsMenu'
 import EndorsementSortTh from './EndorsementSortTh'
 import {
   rowMatchesSearch,
@@ -29,10 +30,12 @@ import {
   canViewEndorsementSchedule,
   downloadEndorsementDetailsExcel,
   eligibleForSchedule,
+  isScheduleEligibleEndorsement,
+  getPendingScheduleRowIds,
   generateScheduleForRows,
   scheduleStatusSortRank,
+  entryCdImpactSignedInr,
   endorsementNumber,
-  entryCdImpactInr,
 } from './endorsementScheduleShared'
 import {
   ScheduleDocumentViewerModal,
@@ -40,6 +43,9 @@ import {
   ENDORSEMENT_TABLE_TH_CLASS,
   ENDORSEMENT_TABLE_ICON_BTN,
   ENDORSEMENT_SCHEDULE_GENERATE_BTN,
+  ENDORSEMENT_SCHEDULE_VIEW_BTN,
+  ENDORSEMENT_TABLE_FIX_BTN,
+  ENDORSEMENT_TABLE_TRACK_BTN,
 } from './ScheduleDocumentModals'
 import {
   generateEndorsementSchedulePdf,
@@ -52,6 +58,9 @@ import {
   historyRowResultCsvSummary,
   EndorsementLogDateCell as HistoryTableDateCell,
   EndorsementLogStatusBadge as HistoryStatusMetadata,
+  resolveEndorsementDisplayStatus,
+  hasSuccessfulEndorsementRecords,
+  endorsementDisplayStatusSortRank,
   EndorsementActivityCell,
   EndorsementRunModeCell,
   EndorsementDoneByCell,
@@ -273,31 +282,27 @@ function downloadHistoryRowCsv(row) {
   )
 }
 
-/** Flat filled CTAs — compact for dense history table rows. */
-const HISTORY_CTA_BASE =
-  'inline-flex h-7 min-w-[3.75rem] w-[4rem] shrink-0 items-center justify-center gap-1 rounded-md px-1.5 text-[11px] font-medium border-0 shadow-none transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1'
-
-const HISTORY_CTA_VIEW =
-  `${HISTORY_CTA_BASE} bg-[#f0f2ff] text-[#4c46d9] hover:bg-[#e6eaff] focus-visible:ring-[#4c46d9]/35`
-
-const HISTORY_CTA_FIX =
-  `${HISTORY_CTA_BASE} bg-red-50 text-red-700 hover:bg-red-100/95 focus-visible:ring-red-300`
-
-const HISTORY_CTA_TRACK =
-  `${HISTORY_CTA_BASE} bg-amber-50 text-amber-900 hover:bg-amber-100/95 focus-visible:ring-amber-300`
-
+const HISTORY_CTA_VIEW = ENDORSEMENT_SCHEDULE_VIEW_BTN
+const HISTORY_CTA_FIX = ENDORSEMENT_TABLE_FIX_BTN
+const HISTORY_CTA_TRACK = ENDORSEMENT_TABLE_TRACK_BTN
 const HISTORY_ROW_ICON_BTN = ENDORSEMENT_TABLE_ICON_BTN
 
-function V3TabCountBadge({ n, active }) {
-  return (
-    <span
-      className={`ml-2 inline-flex min-h-[1.25rem] min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums leading-none ${
-        active ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'
-      }`}
-    >
-      {n}
-    </span>
-  )
+const SCHEDULES_TAB_NUDGE_KEY = 'mlp.schedulesTabNudgeDismissed'
+
+function readSchedulesTabNudgeDismissed() {
+  try {
+    return localStorage.getItem(SCHEDULES_TAB_NUDGE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function persistSchedulesTabNudgeDismissed() {
+  try {
+    localStorage.setItem(SCHEDULES_TAB_NUDGE_KEY, '1')
+  } catch {
+    /* ignore */
+  }
 }
 
 function StatusBadge({ status }) {
@@ -317,12 +322,12 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v3' })
   const isV2StyleEndorsements = isV2Like || isV3
   const showEndorsementsScheduleChips = isV2Like
   const [v3MainTab, setV3MainTab] = useState('endorsements')
+  const [schedulesTabNudgeDismissed, setSchedulesTabNudgeDismissed] = useState(() => readSchedulesTabNudgeDismissed())
   const [currentPage, setCurrentPage] = useState(1)
   const [errorPanel, setErrorPanel] = useState(null)
   const [progressPanel, setProgressPanel] = useState(null)
   const [viewPanel, setViewPanel] = useState(null)
   const [schedulePreviewRow, setSchedulePreviewRow] = useState(null)
-  const [schedulePreviewGenerating, setSchedulePreviewGenerating] = useState(false)
   const [scheduleViewer, setScheduleViewer] = useState(null)
   const [scheduleViewerUrl, setScheduleViewerUrl] = useState(null)
   const [scheduleViewerLoading, setScheduleViewerLoading] = useState(false)
@@ -361,7 +366,7 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v3' })
       scheduleRef: row.scheduleRef,
       endorsementNo: endorsementNumber(row),
       activity: row.action ?? '',
-      amountInr: entryCdImpactInr(row),
+      amountInr: Math.abs(entryCdImpactSignedInr(row)),
       generatedAt: new Date(row.scheduleGeneratedAt || row.recordedAt || row.date),
     })
     schedulePdfCache.current.set(row.id, bytes)
@@ -394,14 +399,14 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v3' })
 
   const runGenerateForRow = (row, { closePreview = false } = {}) => {
     if (!eligibleForSchedule(row)) return
-    if (closePreview) setSchedulePreviewGenerating(true)
-    generateScheduleForRows([row.id], updateEntry, genTimersRef)
     if (closePreview) {
+      setSchedulePreviewRow(null)
       window.setTimeout(() => {
-        setSchedulePreviewGenerating(false)
-        setSchedulePreviewRow(null)
-      }, 600)
+        generateScheduleForRows([row.id], history, updateEntry, genTimersRef)
+      }, 200)
+      return
     }
+    generateScheduleForRows([row.id], history, updateEntry, genTimersRef)
   }
 
   function handleHistorySort(columnKey) {
@@ -421,10 +426,28 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v3' })
     [history],
   )
 
+  const pendingSchedulePortfolioCount = useMemo(
+    () => getPendingScheduleRowIds(history).length,
+    [history],
+  )
+
+  const showSchedulesTabNudge =
+    isV3 && v3MainTab === 'endorsements' && pendingSchedulePortfolioCount > 0 && !schedulesTabNudgeDismissed
+
+  function dismissSchedulesTabNudge() {
+    setSchedulesTabNudgeDismissed(true)
+    persistSchedulesTabNudgeDismissed()
+  }
+
+  function openV3SchedulesTab() {
+    dismissSchedulesTabNudge()
+    setV3MainTab('schedules')
+  }
+
   const filteredHistory = useMemo(() => {
     let items = [...history]
     if (statusFilter !== 'All') {
-      items = items.filter(r => r.status === statusFilter)
+      items = items.filter((r) => resolveEndorsementDisplayStatus(r) === statusFilter)
     }
     if (dateFrom || dateTo) {
       items = items.filter((r) => entryMatchesDateRange(r, dateFrom, dateTo))
@@ -448,7 +471,11 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v3' })
         case 'doneBy':
           return m * formatDoneBySummary(a).localeCompare(formatDoneBySummary(b))
         case 'status':
-          return m * String(a.status || '').localeCompare(String(b.status || ''))
+          return (
+            m *
+            (endorsementDisplayStatusSortRank(resolveEndorsementDisplayStatus(a)) -
+              endorsementDisplayStatusSortRank(resolveEndorsementDisplayStatus(b)))
+          )
         case 'result':
           return m * ((Number(a.count) || 0) - (Number(b.count) || 0))
         case 'scheduleStatus':
@@ -514,6 +541,7 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v3' })
       >
         <option value="All">All Status</option>
         <option value="Success">Success</option>
+        <option value="Partial success">Partial success</option>
         <option value="Failed">Failed</option>
         <option value="In Progress">In Progress</option>
         <option value="Processing">Processing</option>
@@ -530,11 +558,6 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v3' })
         </button>
       )}
     </div>
-  )
-
-  const v3SchedulesBadgeCount = useMemo(
-    () => history.filter((e) => e.status === 'Success' && getEndorsementScheduleStatus(e)).length,
-    [history],
   )
 
   const endorsementsScheduleChips = (
@@ -570,7 +593,7 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v3' })
 
   const endorsementsToolbarFilters = (
     <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-      <div className="relative min-w-[11rem] w-full max-w-[280px] sm:w-auto sm:flex-initial">
+      <div className="relative min-w-[11rem] w-full max-w-[296px] sm:w-auto sm:flex-initial">
         <Search
           size={14}
           className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"
@@ -672,12 +695,37 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v3' })
                     ? 'border-indigo-600 text-indigo-700'
                     : 'border-transparent text-gray-500 hover:border-gray-200 hover:text-gray-800'
                 }`}
-                onClick={() => setV3MainTab('schedules')}
+                onClick={openV3SchedulesTab}
               >
                 Endorsement schedules
-                <V3TabCountBadge n={v3SchedulesBadgeCount} active={v3MainTab === 'schedules'} />
               </button>
             </div>
+            {showSchedulesTabNudge ? (
+              <div className="mx-4 mb-3 mt-1 flex items-start justify-between gap-3 rounded-lg border border-indigo-200 bg-indigo-50/90 px-3 py-2.5">
+                <div className="flex min-w-0 items-start gap-2">
+                  <Info size={14} className="mt-0.5 shrink-0 text-indigo-600" aria-hidden />
+                  <p className="text-xs leading-snug text-indigo-950">
+                    You have endorsements ready for schedule generation. Open{' '}
+                    <button
+                      type="button"
+                      onClick={openV3SchedulesTab}
+                      className="cursor-pointer font-semibold text-indigo-700 underline decoration-indigo-300 underline-offset-2 hover:text-indigo-900"
+                    >
+                      Endorsement schedules
+                    </button>{' '}
+                    to generate combined insurer schedules.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={dismissSchedulesTabNudge}
+                  className="shrink-0 cursor-pointer rounded-md p-1 text-indigo-400 transition-colors hover:bg-indigo-100 hover:text-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
+                  aria-label="Dismiss endorsement schedules tip"
+                >
+                  <X size={14} aria-hidden />
+                </button>
+              </div>
+            ) : null}
             {v3MainTab === 'endorsements' ? v3EndorsementsToolbar : null}
           </>
         ) : null}
@@ -777,14 +825,15 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v3' })
                     <EndorsementDoneByCell row={row} />
                   </td>
                   <td className="px-3 py-2 align-middle">
-                    <StatusBadge status={row.status} />
+                    <StatusBadge status={resolveEndorsementDisplayStatus(row)} />
                   </td>
                   <td className="px-3 py-2 align-middle">
                     <ResultCountCell row={row} />
                   </td>
                   <td className="px-3 py-2 align-middle">
                     <div className="flex flex-wrap items-center gap-1">
-                      {row.status === 'Failed' && (
+                      {(resolveEndorsementDisplayStatus(row) === 'Failed' ||
+                        resolveEndorsementDisplayStatus(row) === 'Partial success') && (
                         <button
                           type="button"
                           onClick={() => setErrorPanel(row)}
@@ -795,7 +844,7 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v3' })
                           Fix
                         </button>
                       )}
-                      {row.status === 'Success' && (
+                      {resolveEndorsementDisplayStatus(row) === 'Success' && (
                         <button
                           type="button"
                           onClick={() => setViewPanel(row)}
@@ -841,7 +890,14 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v3' })
                   </td>
                   {!isV3 ? (
                     <td className="px-3 py-2 align-middle">
-                      {row.status === 'Success' ? (() => {
+                      {isV4 ? (
+                        <EndorsementScheduleActionsMenu
+                          row={row}
+                          onGenerateSchedule={(r) => setSchedulePreviewRow(r)}
+                          onViewSchedule={(r) => void openScheduleViewer(r)}
+                          onDownloadPdf={(r) => void downloadSchedulePdfForRow(r)}
+                        />
+                      ) : isScheduleEligibleEndorsement(row) ? (() => {
                         const scheduleStatus = getEndorsementScheduleStatus(row)
                         if (scheduleStatus === 'pending') {
                           return (
@@ -870,12 +926,13 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v3' })
                               <button
                                 type="button"
                                 disabled={!viewReady}
-                                className={HISTORY_ROW_ICON_BTN}
+                                className={ENDORSEMENT_SCHEDULE_VIEW_BTN}
                                 title={viewReady ? `View schedule ${row.scheduleRef}` : 'View unavailable'}
                                 aria-label={viewReady ? `View schedule ${row.scheduleRef}` : 'View unavailable'}
                                 onClick={() => void openScheduleViewer(row)}
                               >
-                                <Eye size={12} strokeWidth={2} className="shrink-0" aria-hidden />
+                                <Eye size={11} strokeWidth={2} className="shrink-0" aria-hidden />
+                                View
                               </button>
                               <button
                                 type="button"
@@ -965,8 +1022,6 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v3' })
             dateTo={dateTo}
             onDateFromChange={(v) => setDateFrom(v)}
             onDateToChange={(v) => setDateTo(v)}
-            enableRowSelection
-            onGenerateSchedule={(row) => setSchedulePreviewRow(row)}
             onViewSchedule={(row) => void openScheduleViewer(row)}
             onDownloadPdf={(row) => void downloadSchedulePdfForRow(row)}
           />
@@ -994,10 +1049,7 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v3' })
       <SchedulePreviewGenerateModal
         open={schedulePreviewRow != null}
         row={schedulePreviewRow}
-        generating={schedulePreviewGenerating}
-        onClose={() => {
-          if (!schedulePreviewGenerating) setSchedulePreviewRow(null)
-        }}
+        onClose={() => setSchedulePreviewRow(null)}
         onGenerate={() => {
           if (schedulePreviewRow) runGenerateForRow(schedulePreviewRow, { closePreview: true })
         }}
@@ -1904,11 +1956,13 @@ function ViewDetailModal({ entry, onClose }) {
   const hasDetails = entry.details && Array.isArray(entry.details) && entry.details.length > 0
   const showEmailCol = hasDetails && entry.details.some((d) => d.email)
   const ps = entry.premiumSummary
+  const displayStatus = resolveEndorsementDisplayStatus(entry)
+  const showSuccessContent = hasSuccessfulEndorsementRecords(entry)
 
   const recordsTable = hasDetails ? (
     <>
       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-        {entry.status === 'Success' ? 'Added / updated / affected records' : 'Affected employees / records'}
+        {hasSuccessfulEndorsementRecords(entry) ? 'Added / updated / affected records' : 'Affected employees / records'}
       </p>
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden overflow-x-auto">
         <table className="w-full text-sm min-w-[360px]">
@@ -1951,7 +2005,7 @@ function ViewDetailModal({ entry, onClose }) {
     </div>
   )
 
-  const premiumBlock = entry.status === 'Success' && ps && (
+  const premiumBlock = hasSuccessfulEndorsementRecords(entry) && ps && (
     <div className="rounded-lg border border-gray-200/90 bg-gray-50/60 p-3.5">
       <div className="flex items-start gap-2.5">
         <div className="w-7 h-7 rounded-md bg-gray-200/80 flex items-center justify-center flex-shrink-0">
@@ -1992,10 +2046,10 @@ function ViewDetailModal({ entry, onClose }) {
               <h3 className="text-sm font-semibold text-gray-900">{entry.action}</h3>
               <p className="text-xs text-gray-500 flex flex-wrap items-center gap-x-1.5 gap-y-1 mt-0.5">
                 <span>{formatDate(entry.date)} · {entry.doneBy}</span>
-                {entry.status === 'Success' && (
+                {showSuccessContent && (
                   <>
                     <span className="text-gray-300">·</span>
-                    <HistoryStatusMetadata status={entry.status} compact />
+                    <HistoryStatusMetadata status={displayStatus} compact />
                     <span className="text-gray-300">·</span>
                     <span>{entry.count} record(s)</span>
                     <span className="text-gray-400 capitalize">· {entry.type || 'quick'}</span>
@@ -2010,7 +2064,7 @@ function ViewDetailModal({ entry, onClose }) {
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-5">
-          {entry.status === 'Success' ? (
+          {showSuccessContent ? (
             <div className="space-y-5">
               {recordsTable}
               {premiumBlock}
@@ -2020,7 +2074,7 @@ function ViewDetailModal({ entry, onClose }) {
               <div className="grid grid-cols-3 gap-4 mb-5">
                 <div className="bg-gray-50 rounded-xl p-3.5">
                   <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Status</p>
-                  <HistoryStatusMetadata status={entry.status} />
+                  <HistoryStatusMetadata status={displayStatus} />
                 </div>
                 <div className="bg-gray-50 rounded-xl p-3.5">
                   <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Employee Count</p>

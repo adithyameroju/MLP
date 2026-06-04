@@ -124,14 +124,14 @@ function settlementBadge(settlement) {
     return (
       <span
         className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-900"
-        title="Awaiting finance / billing reconciliation in this demo."
+        title="Awaiting finance / billing reconciliation."
       >
         Pending recon
       </span>
     )
   }
   return (
-    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-700" title="Posted to wallet in this demo.">
+    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-700" title="Posted to wallet.">
       Settled
     </span>
   )
@@ -177,7 +177,7 @@ export default function CdBalance() {
 
   const financeSummaryText = useMemo(() => {
     const lines = [
-      `CD balance (demo): ${formatInr(CD_CURRENT_BALANCE_RUPEES)}`,
+      `CD balance: ${formatInr(CD_CURRENT_BALANCE_RUPEES)}`,
       `As of: ${formatAsOf(CD_BALANCE_AS_OF_ISO)}`,
       `Source: ${CD_BALANCE_SOURCE_LABEL}`,
       `Average consumption: ${formatInr(CD_MONTHLY_BURN_RUPEES)}`,
@@ -185,7 +185,7 @@ export default function CdBalance() {
         ? `Runway (est.): ~${runwayWks} wks · ~${runwayMos} mos`
         : '',
       `Minimum: ${formatInr(CD_THRESHOLDS.minimum)} · Buffer: ${formatInr(CD_THRESHOLDS.buffer)}`,
-      `Alert prefs (demo): deduction=${alertPrefs.notifyOnDeduction}, highUsage=${alertPrefs.highUsageEnabled}@${alertPrefs.highUsagePct}%, monthly=${alertPrefs.monthlyDigest}`,
+      `Alert prefs: deduction=${alertPrefs.notifyOnDeduction}, highUsage=${alertPrefs.highUsageEnabled}@${alertPrefs.highUsagePct}%, monthly=${alertPrefs.monthlyDigest}`,
     ]
     return lines.filter(Boolean).join('\n')
   }, [runwayWks, runwayMos, alertPrefs])
@@ -200,7 +200,7 @@ export default function CdBalance() {
 
   const handleDownloadCsv = useCallback(() => {
     const csv = buildLedgerCsv(cdTransactions)
-    triggerDownload(`cd-ledger-demo-${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    triggerDownload(`cd-ledger-${new Date().toISOString().slice(0, 10)}.csv`, csv)
   }, [])
 
   const dismissDraft = () => {
@@ -260,7 +260,7 @@ export default function CdBalance() {
             </h2>
             <p className="mt-2 text-sm text-gray-600">
               Top-ups are coordinated with finance (NEFT / instructions from your account manager). This dialog is a
-              demo — wire to your treasury workflow when ready.
+              Connect your treasury workflow when ready.
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               <button
@@ -333,7 +333,7 @@ export default function CdBalance() {
                 {CD_BALANCE_SOURCE_LABEL}
               </p>
               <p className="mt-2 text-xs text-gray-500 max-w-2xl leading-relaxed">
-                Ledger total after the latest posted movements (demo). Rounding in rupees; GST lines may differ from
+                Ledger total after the latest posted movements. Rounding in rupees; GST lines may differ from
                 endorsement preview totals.
               </p>
             </div>
@@ -487,7 +487,7 @@ export default function CdBalance() {
                 Alert preferences
               </h3>
               <p className="text-xs text-gray-500 mb-4">
-                Demo only — choices are saved in this browser. Production would send email or in-app notifications.
+                Choices are saved in this browser. Email or in-app notifications can be enabled by your admin.
               </p>
               <div className="space-y-3">
                 <label className="flex items-start gap-3 cursor-pointer text-sm text-gray-800">
@@ -547,7 +547,7 @@ export default function CdBalance() {
               </div>
               {prefsSavedFlash ? (
                 <p className="mt-3 text-xs font-medium text-emerald-700" role="status">
-                  Preferences saved in this browser (demo).
+                  Preferences saved in this browser.
                 </p>
               ) : null}
             </div>
@@ -652,7 +652,7 @@ export default function CdBalance() {
             </table>
           </div>
           <div className="px-4 py-3 border-t border-gray-100 bg-gray-50/80 flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs text-gray-500">Demo export — no server call.</span>
+            <span className="text-xs text-gray-500">Export downloads the filtered ledger as CSV.</span>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"

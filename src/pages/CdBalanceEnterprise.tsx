@@ -23,6 +23,7 @@ import {
   Eye,
 } from 'lucide-react'
 import { useGlobalSearch } from '../context/GlobalSearchContext'
+import { useEntity } from '../context/EntityContext'
 import { CD_BALANCE_AS_OF_ISO, CD_MONTHLY_BURN_RUPEES, CD_PREMIUM_SPLIT, CD_THRESHOLDS } from '../data/cdWalletMock'
 import { CD_PROFORMA_EMPLOYER } from '../data/cdProformaMock'
 import {
@@ -524,6 +525,7 @@ type CdRechargeModalProps = {
   onDownload: () => void
   onViewProforma: () => void
   onViewProformaList: () => void
+  billingEntityLabel: string
 }
 
 function CdRechargeModal({
@@ -539,6 +541,7 @@ function CdRechargeModal({
   onDownload,
   onViewProforma,
   onViewProformaList,
+  billingEntityLabel,
 }: CdRechargeModalProps) {
   const modalTitle =
     phase === 'ready' ? 'Proforma invoice ready' : phase === 'generating' ? 'Generating invoice' : 'Add funds'
@@ -626,7 +629,7 @@ function CdRechargeModal({
           />
           {amountError ? <p className="mt-2 text-xs font-medium text-red-600">{amountError}</p> : null}
           <p className="mt-2 text-xs text-gray-500">
-            Billing entity: {CD_PROFORMA_EMPLOYER.legalName}
+            Billing entity: {billingEntityLabel}
             {CD_PROFORMA_EMPLOYER.gstin ? ` · GSTIN ${CD_PROFORMA_EMPLOYER.gstin}` : ''}
           </p>
           <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-4">
@@ -1227,6 +1230,8 @@ function DisputeRaiseFormBody({
 export default function CdBalanceEnterprise() {
   const navigate = useNavigate()
   const { query: globalSearchQuery } = useGlobalSearch()
+  const { selectedEntity } = useEntity()
+  const billingEntityLabel = selectedEntity?.label ?? CD_PROFORMA_EMPLOYER.legalName
   const [configureModalOpen, setConfigureModalOpen] = useState(false)
   const [rechargePanelOpen, setRechargePanelOpen] = useState(false)
   const [rechargePhase, setRechargePhase] = useState<RechargePhase>('form')
@@ -1389,7 +1394,7 @@ export default function CdBalanceEnterprise() {
     if (cached) {
       downloadProformaPdfBytes(
         cached,
-        proformaDownloadFilename(CD_PROFORMA_EMPLOYER.legalName, lastGeneratedProforma.ref),
+        proformaDownloadFilename(billingEntityLabel, lastGeneratedProforma.ref),
       )
       return
     }
@@ -1399,9 +1404,9 @@ export default function CdBalanceEnterprise() {
       requestedAt: new Date().toISOString(),
       amount: lastGeneratedProforma.amount,
       status: 'issued',
-      employerName: CD_PROFORMA_EMPLOYER.legalName,
+      employerName: billingEntityLabel,
     })
-  }, [lastGeneratedProforma, downloadProformaById])
+  }, [lastGeneratedProforma, downloadProformaById, billingEntityLabel])
 
   const viewLastGeneratedProforma = useCallback(() => {
     if (!lastGeneratedProforma) return
@@ -1411,9 +1416,9 @@ export default function CdBalanceEnterprise() {
       requestedAt: new Date().toISOString(),
       amount: lastGeneratedProforma.amount,
       status: 'issued',
-      employerName: CD_PROFORMA_EMPLOYER.legalName,
+      employerName: billingEntityLabel,
     })
-  }, [lastGeneratedProforma, viewProforma])
+  }, [lastGeneratedProforma, viewProforma, billingEntityLabel])
 
   const openTxDetail = useCallback((tx: TransactionRow) => {
     setSelectedTx(tx)
@@ -1462,7 +1467,7 @@ export default function CdBalanceEnterprise() {
         requestedAt,
         amount: amountInr,
         status: 'issued',
-        employerName: CD_PROFORMA_EMPLOYER.legalName,
+        employerName: billingEntityLabel,
       }
 
       setRechargePhase('generating')
@@ -1484,7 +1489,7 @@ export default function CdBalanceEnterprise() {
                 invoiceRef: ref,
                 amountInr,
                 requestedAt: new Date(requestedAt),
-                employerName: CD_PROFORMA_EMPLOYER.legalName,
+                employerName: billingEntityLabel,
                 gstin: CD_PROFORMA_EMPLOYER.gstin,
               })
               proformaPdfCache.current.set(id, bytes)
@@ -1504,7 +1509,7 @@ export default function CdBalanceEnterprise() {
       }
       proformaGenTimers.current.push(window.setTimeout(tick, PROFORMA_PDF_STEP_MS))
     },
-    [],
+    [billingEntityLabel],
   )
 
   const handleGenerateProforma = useCallback(() => {
@@ -1590,10 +1595,10 @@ export default function CdBalanceEnterprise() {
         <CdPageHeader
           onAddFunds={openRechargePanel}
           onDownloadStatement={() => {
-            const blob = new Blob(['CD statement (demo)'], { type: 'text/plain' })
+            const blob = new Blob(['CD statement'], { type: 'text/plain' })
             const a = document.createElement('a')
             a.href = URL.createObjectURL(blob)
-            a.download = 'cd-statement-demo.txt'
+            a.download = 'cd-statement.txt'
             a.click()
             URL.revokeObjectURL(a.href)
           }}
@@ -1652,6 +1657,7 @@ export default function CdBalanceEnterprise() {
             setMainTab('history')
             setHistorySubTab('proforma')
           }}
+          billingEntityLabel={billingEntityLabel}
         />
 
         <ProformaViewerModal
@@ -1779,15 +1785,6 @@ export default function CdBalanceEnterprise() {
                 >
                   <Scale className="h-4 w-4 shrink-0" aria-hidden />
                   Raise a dispute
-                </button>
-              ) : pendingReconCount > 0 ? (
-                <button
-                  type="button"
-                  onClick={openReconcile}
-                  className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm transition-colors hover:border-gray-300 hover:bg-gray-50 sm:w-auto"
-                >
-                  <Clock className="h-4 w-4 shrink-0 text-amber-600" aria-hidden />
-                  Reconcile ({pendingReconCount})
                 </button>
               ) : null}
             </div>

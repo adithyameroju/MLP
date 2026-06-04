@@ -23,7 +23,7 @@ export default function ClaimsCompactKpi({
   return (
     <div
       title={tooltip || undefined}
-      className={`group flex min-h-[7rem] cursor-default items-stretch gap-4 rounded-xl border border-gray-200 bg-white px-5 py-4 motion-safe:transition-all motion-safe:duration-500 motion-safe:ease-out motion-safe:hover:-translate-y-0.5 ${
+      className={`group relative z-0 flex min-h-[7rem] cursor-default items-stretch gap-4 rounded-xl border border-gray-200 bg-white px-5 py-4 motion-safe:transition-all motion-safe:duration-500 motion-safe:ease-out motion-safe:hover:-translate-y-0.5 hover:z-30 focus-within:z-30 ${
         visible ? 'motion-safe:opacity-100 motion-safe:translate-y-0' : 'motion-safe:opacity-0 motion-safe:translate-y-2'
       }`}
     >

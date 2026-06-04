@@ -11,14 +11,14 @@ import {
 } from 'lucide-react'
 import PageHeader from '../components/PageHeader'
 import EndorsementSortTh from '../components/EndorsementSortTh'
-import ScheduleGenerateHoverTip from '../components/ScheduleGenerateHoverTip'
 import {
   EndorsementActivityCell,
   EndorsementRunModeCell,
   EndorsementDoneByCell,
+  EndorsementLogStatusBadge,
+  resolveEndorsementDisplayStatus,
 } from '../components/endorsementLogTableCells'
 import { endorsementsModuleCrumb } from '../lib/breadcrumbPresets'
-import { formatInr } from '../lib/currencyFormat'
 import { useEndorsements } from '../store/EndorsementStore'
 import {
   SCHEDULE_PER_PAGE,
@@ -27,8 +27,10 @@ import {
   SCHEDULE_FILE_ICON_BTN,
   downloadEndorsementDetailsExcel,
   eligibleForSchedule,
+  isScheduleEligibleEndorsement,
   endorsementNumber,
-  entryCdImpactInr,
+  entryCdImpactSignedInr,
+  EndorsementCdImpactCell,
   rowMatchesSearch,
   createBatchScheduleRefs,
   formatShortDate,
@@ -106,12 +108,12 @@ export default function EndorsementSchedule() {
   )
 
   const portfolioPending = useMemo(
-    () => sortedHistory.filter((e) => e.status === 'Success' && !e.scheduleRef),
+    () => sortedHistory.filter((e) => isScheduleEligibleEndorsement(e) && !e.scheduleRef),
     [sortedHistory],
   )
 
   const portfolioGenerated = useMemo(
-    () => sortedHistory.filter((e) => !!e.scheduleRef && e.status === 'Success'),
+    () => sortedHistory.filter((e) => !!e.scheduleRef && isScheduleEligibleEndorsement(e)),
     [sortedHistory],
   )
 
@@ -142,7 +144,8 @@ export default function EndorsementSchedule() {
         columnKey === 'date' ||
         columnKey === 'generatedOn' ||
         columnKey === 'amount' ||
-        columnKey === 'status'
+        columnKey === 'status' ||
+        columnKey === 'endorsementStatus'
       return { key: columnKey, dir: preferDesc ? 'desc' : 'asc' }
     })
     setTablePage(1)
@@ -250,7 +253,7 @@ export default function EndorsementSchedule() {
   }
 
   function emptyColspan() {
-    return tab === 'pending' ? 6 : 9
+    return tab === 'pending' ? 7 : 10
   }
 
   return (
@@ -323,21 +326,19 @@ export default function EndorsementSchedule() {
                   <span className="tabular-nums font-semibold">{selectedEligibleCount}</span> selected — generate invoices for these endorsements.
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
-                  <ScheduleGenerateHoverTip>
-                    <button
-                      type="button"
-                      disabled={generating || selectedEligibleCount === 0}
-                      onClick={() => void generateForSelection()}
-                      className={generateToolbarBtnClass}
-                    >
-                      {generating ? (
-                        <Loader2 size={18} className="shrink-0 animate-spin" aria-hidden />
-                      ) : (
-                        <FileStack size={18} aria-hidden />
-                      )}
-                      {generating ? 'Generating…' : 'Generate'}
-                    </button>
-                  </ScheduleGenerateHoverTip>
+                  <button
+                    type="button"
+                    disabled={generating || selectedEligibleCount === 0}
+                    onClick={() => void generateForSelection()}
+                    className={generateToolbarBtnClass}
+                  >
+                    {generating ? (
+                      <Loader2 size={18} className="shrink-0 animate-spin" aria-hidden />
+                    ) : (
+                      <FileStack size={18} aria-hidden />
+                    )}
+                    {generating ? 'Generating…' : 'Generate'}
+                  </button>
                   {selectedIds.size >= 2 ? (
                     <button
                       type="button"
@@ -459,6 +460,15 @@ export default function EndorsementSchedule() {
                       >
                         Done by
                       </EndorsementSortTh>
+                      <EndorsementSortTh
+                        columnKey="endorsementStatus"
+                        sortKey={scheduleSort.key}
+                        sortDir={scheduleSort.dir}
+                        onSort={handleScheduleSort}
+                        className="min-w-0"
+                      >
+                        Endorsement status
+                      </EndorsementSortTh>
                     </>
                   ) : null}
                   {tab === 'generated' ? (
@@ -506,8 +516,18 @@ export default function EndorsementSchedule() {
                         sortDir={scheduleSort.dir}
                         onSort={handleScheduleSort}
                         align="right"
+                        title="Amount debited from or credited to your CD balance for this endorsement."
                       >
-                        Amount
+                        CD wallet impact
+                      </EndorsementSortTh>
+                      <EndorsementSortTh
+                        columnKey="endorsementStatus"
+                        sortKey={scheduleSort.key}
+                        sortDir={scheduleSort.dir}
+                        onSort={handleScheduleSort}
+                        className="min-w-0"
+                      >
+                        Endorsement status
                       </EndorsementSortTh>
                       <EndorsementSortTh
                         columnKey="status"
@@ -516,7 +536,7 @@ export default function EndorsementSchedule() {
                         onSort={handleScheduleSort}
                         className="min-w-0"
                       >
-                        Status
+                        Schedule status
                       </EndorsementSortTh>
                       <th
                         scope="col"
@@ -571,6 +591,9 @@ export default function EndorsementSchedule() {
                         <td className="min-w-0 px-4 py-2.5 align-middle">
                           <EndorsementDoneByCell row={row} />
                         </td>
+                        <td className="min-w-0 px-4 py-2.5 align-middle">
+                          <EndorsementLogStatusBadge status={resolveEndorsementDisplayStatus(row)} compact />
+                        </td>
                       </tr>
                     )
                   })
@@ -592,8 +615,11 @@ export default function EndorsementSchedule() {
                       <td className="min-w-0 px-4 py-2.5 align-middle">
                         <EndorsementDoneByCell row={row} />
                       </td>
-                      <td className="whitespace-nowrap px-4 py-2.5 text-right align-middle text-[12px] font-semibold tabular-nums text-gray-900">
-                        {formatInr(entryCdImpactInr(row))}
+                      <td className="whitespace-nowrap px-4 py-2.5 align-middle">
+                        <EndorsementCdImpactCell row={row} />
+                      </td>
+                      <td className="min-w-0 px-4 py-2.5 align-middle">
+                        <EndorsementLogStatusBadge status={resolveEndorsementDisplayStatus(row)} compact />
                       </td>
                       <td className="min-w-0 px-4 py-2.5 align-middle">
                         <ScheduleDocumentStatusCell row={row} />

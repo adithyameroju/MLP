@@ -42,7 +42,7 @@ export function getPortalAssistantReply(input, context = {}) {
 
   if (!q) {
     return {
-      text: `I can pull live numbers from your demo wallet, explain concepts, or jump you into a flow${ent ? ` for ${ent}` : ''}. Try "What's my current CD?" or "How many open claims?"`,
+      text: `I can pull live numbers from your wallet, explain concepts, or jump you into a flow${ent ? ` for ${ent}` : ''}. Try "What's my current CD?" or "How many open claims?"`,
       highlights: [
         { label: 'CD balance', value: snap.balanceFormatted, tone: 'neutral' },
         { label: 'Status', value: snap.riskLabel.split(' — ')[0], tone: snap.riskTone },
@@ -143,7 +143,7 @@ export function getPortalAssistantReply(input, context = {}) {
     const t = snap.lastTxn
     if (!t) {
       return {
-        text: "I don't have a recent transaction on file in this demo.",
+        text: "I don't have a recent transaction on file yet.",
         actions: [{ id: 'cd', label: 'Open CD Balance', path: '/cd-balance' }],
       }
     }
@@ -169,7 +169,7 @@ export function getPortalAssistantReply(input, context = {}) {
   if (isCdDisputeQuery(q)) {
     if (snap.openDisputes === 0) {
       return {
-        text: 'No open CD disputes in this demo.',
+        text: 'No open CD disputes on file.',
         actions: [{ id: 'cd', label: 'Open CD Balance', path: '/cd-balance' }],
       }
     }
@@ -200,7 +200,7 @@ export function getPortalAssistantReply(input, context = {}) {
 
   if (isClaimsPaidQuery(q)) {
     return {
-      text: `Claims paid YTD in this demo portfolio: ${snap.claimsPaidYtd}. Average settlement is about ${claimsSummary.avgSettlementDays} days; top category is ${claimsSummary.topCategoryLabel}.`,
+      text: `Claims paid YTD: ${snap.claimsPaidYtd}. Average settlement is about ${claimsSummary.avgSettlementDays} days; top category is ${claimsSummary.topCategoryLabel}.`,
       highlights: [
         { label: 'Paid YTD', value: snap.claimsPaidYtd, tone: 'success' },
         { label: 'Avg settlement', value: `${claimsSummary.avgSettlementDays} days`, tone: 'neutral' },
@@ -225,7 +225,7 @@ export function getPortalAssistantReply(input, context = {}) {
 
   if (isPolicyInfoQuery(q)) {
     return {
-      text: `${ent ? `${ent} is` : 'Your entity is'} on policy ${snap.policyNo} in this demo. Policy coverage shows bands, limits, and benefits.`,
+      text: `${ent ? `${ent} is` : 'Your entity is'} on policy ${snap.policyNo}. Policy coverage shows bands, limits, and benefits.`,
       highlights: [{ label: 'Policy no.', value: snap.policyNo, tone: 'neutral' }],
       actions: [
         { id: 'policy', label: 'View coverage', path: '/policy-management/coverage' },
@@ -236,7 +236,7 @@ export function getPortalAssistantReply(input, context = {}) {
 
   if (isLivesCountQuery(q)) {
     return {
-      text: `Your group covers ${snap.totalEmployees.toLocaleString('en-IN')} employees and ${snap.totalDependents.toLocaleString('en-IN')} dependents in this demo.`,
+      text: `Your group covers ${snap.totalEmployees.toLocaleString('en-IN')} employees and ${snap.totalDependents.toLocaleString('en-IN')} dependents.`,
       highlights: [
         { label: 'Employees', value: snap.totalEmployees.toLocaleString('en-IN'), tone: 'neutral' },
         { label: 'Dependents', value: snap.totalDependents.toLocaleString('en-IN'), tone: 'neutral' },
@@ -250,7 +250,7 @@ export function getPortalAssistantReply(input, context = {}) {
 
   if (isPremiumSplitQuery(q)) {
     return {
-      text: `Next billing cycle estimate (demo): GMC ${snap.gmcPremiumFormatted}/mo and GPA ${snap.gpaPremiumFormatted}/mo. These illustrate premium mix — your actual invoice may differ.`,
+      text: `Next billing cycle estimate: GMC ${snap.gmcPremiumFormatted}/mo and GPA ${snap.gpaPremiumFormatted}/mo. These illustrate premium mix — your actual invoice may differ.`,
       highlights: [
         { label: 'GMC (est.)', value: snap.gmcPremiumFormatted, tone: 'neutral' },
         { label: 'GPA (est.)', value: snap.gpaPremiumFormatted, tone: 'neutral' },
@@ -261,7 +261,7 @@ export function getPortalAssistantReply(input, context = {}) {
 
   if (/\b(top up|top-up|add funds|deposit|recharge)\b/.test(q)) {
     return {
-      text: `To add funds, finance initiates a wallet top-up (NEFT/RTGS). The last demo deposit was ${formatInr(2500000)} on 15 Mar. After posting, balance updates in the history log.`,
+      text: `To add funds, finance initiates a wallet top-up (NEFT/RTGS). The last deposit was ${formatInr(2500000)} on 15 Mar. After posting, balance updates in the history log.`,
       actions: [
         { id: 'cd', label: 'CD history log', path: '/cd-balance' },
         { id: 'help', label: 'CD help guide', path: '/support/help' },
@@ -281,7 +281,7 @@ export function getPortalAssistantReply(input, context = {}) {
 
   if (isExplainBurnQuery(q)) {
     return {
-      text: `Burn rate is a forecast of typical monthly wallet usage — right now about ${snap.monthlyBurnFormatted}/month in this demo. It's for planning, not a bill.`,
+      text: `Burn rate is a forecast of typical monthly wallet usage — right now about ${snap.monthlyBurnFormatted}/month. It's for planning, not a bill.`,
       actions: [
         { id: 'burn_data', label: 'Show burn amount', message: 'what is my burn rate' },
         { id: 'cd', label: 'View trend', path: '/cd-balance' },
@@ -322,7 +322,7 @@ export function getPortalAssistantReply(input, context = {}) {
 
   if (/\b(history|log|table|export|csv|transaction|receipt|statement)\b/.test(q)) {
     return {
-      text: 'Filter the CD history log by date/type, search by description or ref, then export CSV for the filtered view (demo download).',
+      text: 'Filter the CD history log by date/type, search by description or ref, then export CSV for the filtered view.',
       actions: [
         { id: 'cd', label: 'Open CD history', path: '/cd-balance' },
         { id: 'last', label: 'Latest posting', message: 'latest cd transaction' },
@@ -332,7 +332,7 @@ export function getPortalAssistantReply(input, context = {}) {
 
   if (/\b(claim)\b/.test(q)) {
     return {
-      text: `Claims hub tracks status and timelines. You currently have ${snap.claimsOpen} open claims in this demo.`,
+      text: `Claims hub tracks status and timelines. You currently have ${snap.claimsOpen} open claims.`,
       actions: [
         { id: 'claims', label: 'Open claims', path: '/claims' },
         { id: 'open', label: 'Open claim count', message: 'how many open claims' },
@@ -390,7 +390,7 @@ export function getPortalAssistantReply(input, context = {}) {
 
   if (/\b(what\s+can\s+you|who\s+are\s+you|capabilities)\b/.test(q)) {
     return {
-      text: 'I can read live demo numbers (CD balance, burn, claims, HRMS queue), explain concepts, and open flows for you. Try: "current CD", "open claims", "HRMS pending", or "latest transaction".',
+      text: 'I can read live numbers (CD balance, burn, claims, HRMS queue), explain concepts, and open flows for you. Try: "current CD", "open claims", "HRMS pending", or "latest transaction".',
       highlights: [
         { label: 'CD balance', value: snap.balanceFormatted, tone: 'neutral' },
         { label: 'Open claims', value: String(snap.claimsOpen), tone: 'neutral' },

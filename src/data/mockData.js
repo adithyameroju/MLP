@@ -26,6 +26,42 @@ const endorsementHistorySeed = [
       { name: 'Nikhil Jain', id: 'EMP023' },
     ],
   },
+  {
+    id: 24,
+    date: '2026-03-11',
+    action: 'Bulk Upload - Add',
+    activityDetail: '18 added · 3 validation failures',
+    doneBy: 'Priya S.',
+    status: 'Failed',
+    count: 21,
+    type: 'bulk',
+    successCount: 18,
+    failedCount: 3,
+  },
+  {
+    id: 25,
+    date: '2026-03-10',
+    action: 'HRMS Sync',
+    activityDetail: '12 synced · 4 rejected by rules',
+    doneBy: 'System',
+    status: 'Failed',
+    count: 16,
+    type: 'sync',
+    successCount: 12,
+    failedCount: 4,
+  },
+  {
+    id: 26,
+    date: '2026-03-10',
+    action: 'Bulk Upload - Update',
+    activityDetail: '7 updated · 1 failed duplicate ID',
+    doneBy: 'Rahul K.',
+    status: 'Failed',
+    count: 8,
+    type: 'bulk',
+    successCount: 7,
+    failedCount: 1,
+  },
   { id: 2, date: '2026-03-09', action: 'Bulk Upload - Add', doneBy: 'Priya S.', status: 'Failed', count: 12, type: 'bulk', successCount: 0, failedCount: 12 },
   { id: 21, date: '2026-03-10', action: 'Add Employees - Batch', doneBy: 'Adithya M.', status: 'Failed', count: 2, type: 'quick', details: [
     { name: 'Ravi Shankar', id: 'EMP030', email: 'ravi.s@acko.com', dob: '', mobile: '9876500020', gender: 'Male', doj: '2026-03-12', gmcBase: '', gpaBase: '' },
@@ -79,7 +115,7 @@ const endorsementHistorySeed = [
   {
     id: 901,
     date: '2026-03-12',
-    action: 'Add Employee · Demo pending schedule A',
+    action: 'Add Employee · Pending schedule A',
     activityDetail: '2 employees added',
     doneBy: 'Adithya M.',
     status: 'Success',
@@ -91,7 +127,7 @@ const endorsementHistorySeed = [
   {
     id: 902,
     date: '2026-03-12',
-    action: 'Bulk Upload - Update · Demo pending B',
+    action: 'Bulk Upload - Update · Pending schedule B',
     activityDetail: '6 records · SI revision',
     doneBy: 'Priya S.',
     status: 'Success',
@@ -102,7 +138,7 @@ const endorsementHistorySeed = [
   {
     id: 903,
     date: '2026-03-12',
-    action: 'HRMS Sync · Demo pending C',
+    action: 'HRMS Sync · Pending schedule C',
     activityDetail: '14 lives synced',
     doneBy: 'System',
     status: 'Success',
@@ -113,7 +149,7 @@ const endorsementHistorySeed = [
   {
     id: 904,
     date: '2026-03-13',
-    action: 'Add Employee · Demo pending D',
+    action: 'Add Employee · Pending schedule D',
     activityDetail: '1 employee added',
     doneBy: 'Adithya M.',
     status: 'Success',
@@ -129,7 +165,7 @@ const endorsementHistorySeed = [
   {
     id: 905,
     date: '2026-03-13',
-    action: 'Update Employee · Demo pending E',
+    action: 'Update Employee · Pending schedule E',
     activityDetail: '3 dependents added',
     doneBy: 'Rahul K.',
     status: 'Success',
@@ -321,7 +357,7 @@ const demoSchedulePaginationRows = Array.from({ length: 27 }, (_, index) => {
   return {
     id,
     date,
-    action: `${actionLabel} · Demo schedule ${id}`,
+    action: `${actionLabel} · Schedule batch ${id}`,
     activityDetail: activityHint,
     doneBy: DEMO_SCHEDULE_PAGINATION_DONE_BY[index % DEMO_SCHEDULE_PAGINATION_DONE_BY.length],
     status: 'Success',
@@ -345,13 +381,18 @@ const endorsementHistoryFullSeed = [
 
 /** Demo timestamps (ISO); new entries from addEntry set recordedAt explicitly */
 /** Demo: endorsements without an insurer schedule yet (mixed Success rows for the schedules UI). */
-const DEMO_NOSCHEDULE_IDS = new Set([3, 7, 11, 15, 901, 902, 903, 904, 905, 911, 912, 913, 914, 915, 928, 935, 942])
+const DEMO_NOSCHEDULE_IDS = new Set([3, 7, 11, 14, 15, 24, 25, 26, 901, 902, 903, 904, 905, 911, 912, 913, 914, 915, 928, 935, 942])
+
+function seedCanSchedule(row) {
+  if (typeof row.successCount === 'number') return row.successCount > 0
+  return row.status === 'Success'
+}
 
 export const endorsementHistory = endorsementHistoryFullSeed.map((row) => {
   const idNum = Number(row.id) || 0
   const h = 9 + (idNum % 8)
   const m = (idNum * 7) % 60
-  const canSchedule = row.status === 'Success'
+  const canSchedule = seedCanSchedule(row)
   const missingSchedule = canSchedule && DEMO_NOSCHEDULE_IDS.has(row.id)
   const scheduleRef =
     row.scheduleRef ??
@@ -359,10 +400,13 @@ export const endorsementHistory = endorsementHistoryFullSeed.map((row) => {
   const scheduleGeneratedAt =
     row.scheduleGeneratedAt ??
     (scheduleRef ? new Date(`${row.date}T10:00:00`).toISOString() : null)
+  const endorsementNo =
+    row.endorsementNo ?? (scheduleRef ? `GPA${789123100 + idNum}` : undefined)
   return {
     ...row,
     scheduleRef,
     scheduleGeneratedAt,
+    ...(endorsementNo ? { endorsementNo } : {}),
     recordedAt:
       row.recordedAt ??
       new Date(`${row.date}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`).toISOString(),

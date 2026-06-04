@@ -24,6 +24,37 @@ export function resolveOutcomeCounts(row) {
   return { ok: null, fail: null, total }
 }
 
+/** User-facing endorsement outcome — derives Partial success from success/fail counts. */
+export function resolveEndorsementDisplayStatus(row) {
+  if (row._batchDisplayStatus) return row._batchDisplayStatus
+  if (row.status === 'Processing' || row.status === 'In Progress') return row.status
+  const { ok, fail } = resolveOutcomeCounts(row)
+  if (ok != null && fail != null) {
+    if (ok > 0 && fail > 0) return 'Partial success'
+    if (ok === 0 && fail > 0) return 'Failed'
+    if (ok > 0 && fail === 0) return 'Success'
+  }
+  return row.status ?? 'Failed'
+}
+
+/** True when at least one record succeeded (schedule generation allowed). */
+export function hasSuccessfulEndorsementRecords(row) {
+  const { ok } = resolveOutcomeCounts(row)
+  if (ok != null) return ok > 0
+  return row.status === 'Success'
+}
+
+export function endorsementDisplayStatusSortRank(status) {
+  const order = {
+    Processing: 0,
+    'In Progress': 1,
+    Success: 2,
+    'Partial success': 3,
+    Failed: 4,
+  }
+  return order[status] ?? 5
+}
+
 export function ResultCountCell({ row }) {
   const { ok, fail, total } = resolveOutcomeCounts(row)
   if (row.status === 'Processing' || row.status === 'In Progress') {
@@ -106,6 +137,16 @@ const MODE_BADGE = {
 }
 
 export function EndorsementRunModeCell({ row }) {
+  if (row.isScheduleBatchRow) {
+    return (
+      <span
+        className="inline-flex max-w-full rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-900"
+        title="Combined schedule"
+      >
+        Combined
+      </span>
+    )
+  }
   const mode = deriveRunModeLabel(row)
   const cls = MODE_BADGE[mode] || MODE_BADGE.Quick
   return (
@@ -167,6 +208,14 @@ export function EndorsementLogStatusBadge({ status, compact = false }) {
       <span className={`${base} bg-emerald-50 text-emerald-700`}>
         <CheckCircle2 size={iconSize} className="shrink-0" aria-hidden />
         <span className="truncate">Success</span>
+      </span>
+    )
+  }
+  if (status === 'Partial success') {
+    return (
+      <span className={`${base} bg-amber-50 text-amber-800`}>
+        <AlertCircle size={iconSize} className="shrink-0" aria-hidden />
+        <span className="truncate">Partial success</span>
       </span>
     )
   }

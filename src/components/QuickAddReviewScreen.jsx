@@ -92,7 +92,7 @@ export default function QuickAddReviewScreen({
               primaryBatchCount={employees.length}
               estimateReady
               {...(typeof onRechargeDemo === 'function'
-                ? { rechargeCtaLabel: 'Recharge CD (demo)', onRechargeClick: onRechargeDemo }
+                ? { rechargeCtaLabel: 'Recharge CD', onRechargeClick: onRechargeDemo }
                 : {})}
             />
             <button
