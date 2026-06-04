@@ -243,8 +243,14 @@ export default function EndorsementHistoryScheduleV2({
   const tableColSpan = isPendingView ? 6 : 5
 
   const toolbarContent = (
-    <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2">
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Schedule status">
+    <div
+      className={`flex min-w-0 ${
+        isPendingView
+          ? 'flex-wrap items-center gap-x-3 gap-y-2.5'
+          : 'flex-col gap-4'
+      }`}
+    >
+      <div className="flex shrink-0 flex-wrap items-center gap-2.5" role="group" aria-label="Schedule status">
         {[
           { id: 'pending', label: 'Pending schedules', count: scheduleChipCounts.pending },
           { id: 'generated', label: 'Schedules generated', count: scheduleChipCounts.generated },
@@ -271,7 +277,13 @@ export default function EndorsementHistoryScheduleV2({
           )
         })}
       </div>
-      <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+      <div
+        className={`flex min-w-0 flex-wrap items-center gap-3 ${
+          isPendingView
+            ? 'flex-1 justify-end'
+            : 'justify-end border-t border-gray-100 pt-3'
+        }`}
+      >
         <div className="relative min-w-[11rem] w-full max-w-[296px] sm:w-auto sm:flex-initial">
           <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden />
           <input
@@ -358,23 +370,26 @@ export default function EndorsementHistoryScheduleV2({
         onConfirm={() => void confirmGenerateAllPendingSchedules()}
       />
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="relative z-20 shrink-0 border-b border-gray-100 px-6 py-3" role="tabpanel" aria-labelledby="eh-v3-tab-schedules">
+      <div className="relative z-20 shrink-0 border-b border-gray-100 px-6 py-4 lg:px-8" role="tabpanel" aria-labelledby="eh-v3-tab-schedules">
         {hideTitle ? (
           toolbarContent
         ) : (
           <>
             <h2 className="text-[15px] font-medium text-gray-900">Endorsement schedules</h2>
-            <div className="mt-3 border-t border-gray-100 pt-3">{toolbarContent}</div>
+            <div className="mt-4 border-t border-gray-100 pt-4">{toolbarContent}</div>
           </>
         )}
         {isPendingView ? (
-          <div className="mt-3">
+          <div className="mt-4">
             <div
               role="note"
-              className="flex items-start gap-2 rounded-lg border border-indigo-200 bg-indigo-50/80 px-3 py-2.5 text-xs leading-snug text-indigo-950"
+              className="flex items-start gap-2.5 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-xs leading-relaxed text-sky-950"
             >
-              <Info size={14} className="mt-0.5 shrink-0 text-indigo-600" aria-hidden />
-              <p>Schedules not generated will auto-generate at the end of the month.</p>
+              <Info size={14} className="mt-0.5 shrink-0 text-sky-600" aria-hidden />
+              <p>
+                <span className="font-semibold text-sky-900">Good to know:</span> Schedules not
+                generated will auto-generate at the end of the month.
+              </p>
             </div>
           </div>
         ) : null}

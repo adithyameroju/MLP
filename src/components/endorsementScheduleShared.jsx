@@ -642,7 +642,11 @@ export function generateScheduleForRows(ids, history, updateEntry, timersRef, on
   return batchRef
 }
 
-export function EndorsementScheduleStatusCell({ row }) {
+export function EndorsementScheduleStatusCell({
+  row,
+  showPendingCoachmark = false,
+  onGoToSchedules,
+}) {
   const scheduleStatus = getEndorsementScheduleStatus(row)
   const pillBase = 'inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium capitalize'
 
@@ -650,11 +654,43 @@ export function EndorsementScheduleStatusCell({ row }) {
     return <span className="text-[12px] text-gray-400">—</span>
   }
   if (scheduleStatus === 'pending') {
-    return (
-      <span className={`${pillBase} bg-amber-50 text-amber-800`}>
+    const pill = (
+      <span
+        className={`${pillBase} bg-amber-50 text-amber-800${showPendingCoachmark && onGoToSchedules ? ' cursor-help' : ''}`}
+        tabIndex={showPendingCoachmark && onGoToSchedules ? 0 : undefined}
+      >
         <Clock size={12} className="shrink-0" aria-hidden />
         Pending
       </span>
+    )
+
+    if (!showPendingCoachmark || !onGoToSchedules) {
+      return pill
+    }
+
+    return (
+      <div className="group/pending-coach relative inline-flex max-w-full">
+        {pill}
+        <div
+          role="tooltip"
+          className="pointer-events-none absolute left-0 top-full z-[200] mt-2 w-[min(16rem,calc(100vw-3rem))] rounded-lg border border-gray-200 bg-white p-3 text-left opacity-0 shadow-lg ring-1 ring-black/5 transition-[opacity,transform] duration-200 translate-y-1 group-hover/pending-coach:pointer-events-auto group-hover/pending-coach:translate-y-0 group-hover/pending-coach:opacity-100 group-focus-within/pending-coach:pointer-events-auto group-focus-within/pending-coach:translate-y-0 group-focus-within/pending-coach:opacity-100 motion-reduce:transition-none"
+        >
+          <p className="text-[11px] leading-snug text-gray-600">
+            This endorsement is waiting for an insurer schedule. You can generate it from the
+            Endorsement schedules tab.
+          </p>
+          <button
+            type="button"
+            className="pointer-events-auto mt-2 cursor-pointer text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline"
+            onClick={(e) => {
+              e.stopPropagation()
+              onGoToSchedules()
+            }}
+          >
+            Go to schedules
+          </button>
+        </div>
+      </div>
     )
   }
   if (scheduleStatus === 'processing') {

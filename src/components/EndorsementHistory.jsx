@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { Eye, Download, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Clock, X, Loader2, FileText, Check, Heart, Shield, ChevronDown, ChevronUp, Plus, Trash2, Upload, CheckCircle, Wallet, Wrench, Search, FileDown, Info } from 'lucide-react'
+import { Eye, Download, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Clock, X, Loader2, FileText, Check, Heart, Shield, ChevronDown, ChevronUp, Plus, Trash2, Upload, CheckCircle, Wallet, Wrench, Search, FileDown } from 'lucide-react'
 import { useEndorsements } from '../store/EndorsementStore'
 import { basePlans, gpaBasePlans, dependentRelations } from '../data/mockData'
 import {
@@ -287,24 +287,6 @@ const HISTORY_CTA_FIX = ENDORSEMENT_TABLE_FIX_BTN
 const HISTORY_CTA_TRACK = ENDORSEMENT_TABLE_TRACK_BTN
 const HISTORY_ROW_ICON_BTN = ENDORSEMENT_TABLE_ICON_BTN
 
-const SCHEDULES_TAB_NUDGE_KEY = 'mlp.schedulesTabNudgeDismissed'
-
-function readSchedulesTabNudgeDismissed() {
-  try {
-    return localStorage.getItem(SCHEDULES_TAB_NUDGE_KEY) === '1'
-  } catch {
-    return false
-  }
-}
-
-function persistSchedulesTabNudgeDismissed() {
-  try {
-    localStorage.setItem(SCHEDULES_TAB_NUDGE_KEY, '1')
-  } catch {
-    /* ignore */
-  }
-}
-
 function StatusBadge({ status }) {
   return <HistoryStatusMetadata status={status} />
 }
@@ -322,7 +304,6 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v3' })
   const isV2StyleEndorsements = isV2Like || isV3
   const showEndorsementsScheduleChips = isV2Like
   const [v3MainTab, setV3MainTab] = useState('endorsements')
-  const [schedulesTabNudgeDismissed, setSchedulesTabNudgeDismissed] = useState(() => readSchedulesTabNudgeDismissed())
   const [currentPage, setCurrentPage] = useState(1)
   const [errorPanel, setErrorPanel] = useState(null)
   const [progressPanel, setProgressPanel] = useState(null)
@@ -431,16 +412,7 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v3' })
     [history],
   )
 
-  const showSchedulesTabNudge =
-    isV3 && v3MainTab === 'endorsements' && pendingSchedulePortfolioCount > 0 && !schedulesTabNudgeDismissed
-
-  function dismissSchedulesTabNudge() {
-    setSchedulesTabNudgeDismissed(true)
-    persistSchedulesTabNudgeDismissed()
-  }
-
   function openV3SchedulesTab() {
-    dismissSchedulesTabNudge()
     setV3MainTab('schedules')
   }
 
@@ -698,34 +670,16 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v3' })
                 onClick={openV3SchedulesTab}
               >
                 Endorsement schedules
+                {pendingSchedulePortfolioCount > 0 && v3MainTab === 'endorsements' ? (
+                  <span
+                    className="schedules-tab-badge ml-2 inline-flex min-h-[1.25rem] min-w-[1.25rem] items-center justify-center rounded-full bg-indigo-600 px-1.5 text-[10px] font-semibold tabular-nums leading-none text-white"
+                    aria-label={`${pendingSchedulePortfolioCount} pending schedule${pendingSchedulePortfolioCount === 1 ? '' : 's'}`}
+                  >
+                    {pendingSchedulePortfolioCount}
+                  </span>
+                ) : null}
               </button>
             </div>
-            {showSchedulesTabNudge ? (
-              <div className="mx-4 mb-3 mt-1 flex items-start justify-between gap-3 rounded-lg border border-indigo-200 bg-indigo-50/90 px-3 py-2.5">
-                <div className="flex min-w-0 items-start gap-2">
-                  <Info size={14} className="mt-0.5 shrink-0 text-indigo-600" aria-hidden />
-                  <p className="text-xs leading-snug text-indigo-950">
-                    You have endorsements ready for schedule generation. Open{' '}
-                    <button
-                      type="button"
-                      onClick={openV3SchedulesTab}
-                      className="cursor-pointer font-semibold text-indigo-700 underline decoration-indigo-300 underline-offset-2 hover:text-indigo-900"
-                    >
-                      Endorsement schedules
-                    </button>{' '}
-                    to generate combined insurer schedules.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={dismissSchedulesTabNudge}
-                  className="shrink-0 cursor-pointer rounded-md p-1 text-indigo-400 transition-colors hover:bg-indigo-100 hover:text-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
-                  aria-label="Dismiss endorsement schedules tip"
-                >
-                  <X size={14} aria-hidden />
-                </button>
-              </div>
-            ) : null}
             {v3MainTab === 'endorsements' ? v3EndorsementsToolbar : null}
           </>
         ) : null}
@@ -885,8 +839,12 @@ export default function EndorsementHistory({ scheduleExperienceVersion = 'v3' })
                       </button>
                     </div>
                   </td>
-                  <td className="px-3 py-2 align-middle">
-                    <EndorsementScheduleStatusCell row={row} />
+                  <td className="relative overflow-visible px-3 py-2 align-middle">
+                    <EndorsementScheduleStatusCell
+                      row={row}
+                      showPendingCoachmark={isV3 && v3MainTab === 'endorsements'}
+                      onGoToSchedules={isV3 ? openV3SchedulesTab : undefined}
+                    />
                   </td>
                   {!isV3 ? (
                     <td className="px-3 py-2 align-middle">
